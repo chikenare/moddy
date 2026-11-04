@@ -14,7 +14,15 @@ const MAX = 4000
 const saved = (): FormattedMessage => ({ text: store.chat!.rules, entities: store.chat!.rulesEntities })
 const draft = ref<FormattedMessage>(saved())
 const busy = ref(false)
-watch(() => [store.chat?.rules, store.chat?.rulesEntities], () => { draft.value = store.chat ? saved() : EMPTY_MESSAGE })
+// A string key, so a store refresh that returns the same rules does not rewind what is being typed.
+// What this panel is saving is not an outside change either: the store echoes it back (optimistic update, then the
+// server's reply), and applying it would drop whatever was typed while the request was in flight.
+let sentKey: string | null = null
+const keyOf = (m: FormattedMessage) => JSON.stringify([m.text, m.entities])
+watch(() => JSON.stringify([store.chat?.rules, store.chat?.rulesEntities]), (key) => {
+  if (key === sentKey) return
+  draft.value = store.chat ? saved() : EMPTY_MESSAGE
+})
 
 const dirty = computed(() => {
   const current = saved()
@@ -33,6 +41,7 @@ function trimmed(): FormattedMessage {
 
 async function save() {
   busy.value = true
+  sentKey = keyOf({ text: trimmed().text, entities: trimmed().entities })
   try {
     await store.update({ rules: draft.value.text, rulesEntities: draft.value.entities })
     toast.success('Rules saved')

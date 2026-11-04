@@ -47,3 +47,16 @@ test.each([
   expect(r).toHaveProperty("error");
   expect((r as { error: string }).error).toContain(message);
 });
+
+test.each(["2026-01-10T00:00:00Z", "2026-01-10T00:45:00Z", "2026-01-10T00:51:30Z", "2026-03-08T07:00:00Z"])(
+  "a close pair later in the hour is refused whatever the clock says (%s)",
+  (now) => {
+    const r = validateRecurrence("0,10,20,30,40,50,51 * * * *", "UTC", at(now));
+    expect((r as { error: string }).error).toContain("every 5 minutes");
+  },
+);
+
+test("a long gap after a good stretch is fine and only five runs are returned", () => {
+  const r = validateRecurrence("0 9 * * 1", "UTC", at("2026-01-10T00:00:00Z")) as { nextRuns: number[] };
+  expect(r.nextRuns).toHaveLength(5);
+});

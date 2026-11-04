@@ -2,6 +2,8 @@ import { Cron } from "croner";
 
 const MIN_GAP_SECONDS = 5 * 60;
 const PREVIEW_RUNS = 5;
+// Enough to cover several repeats of any hourly or daily pattern, so the verdict does not depend on the clock.
+const CHECKED_RUNS = 300;
 
 function fields(cron: string): string[] {
   return cron.trim().split(/\s+/).filter(Boolean);
@@ -28,17 +30,18 @@ export function validateRecurrence(cron: string, timezone: string, now: number):
   } catch (e) {
     return { error: `Invalid schedule: ${e instanceof Error ? e.message : String(e)}` };
   }
-  const nextRuns: number[] = [];
+  const runs: number[] = [];
   let at = now;
-  while (nextRuns.length < PREVIEW_RUNS) {
+  while (runs.length < CHECKED_RUNS) {
     const next = nextRun(cron, timezone, at);
     if (next === null) break;
-    nextRuns.push(next);
+    runs.push(next);
     at = next;
   }
-  if (!nextRuns.length) return { error: "This schedule never runs" };
-  for (let i = 1; i < nextRuns.length; i++) {
-    if (nextRuns[i]! - nextRuns[i - 1]! < MIN_GAP_SECONDS) return { error: "Messages can't repeat more often than every 5 minutes" };
+  if (!runs.length) return { error: "This schedule never runs" };
+  for (let i = 1; i < runs.length; i++) {
+    if (runs[i]! - runs[i - 1]! < MIN_GAP_SECONDS) return { error: "Messages can't repeat more often than every 5 minutes" };
   }
+  const nextRuns = runs.slice(0, PREVIEW_RUNS);
   return { nextRuns };
 }
