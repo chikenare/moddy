@@ -144,14 +144,27 @@ test("enqueue retorna sin esperar a Telegram", () => {
   expect(e.enqueue(viol())).toBeUndefined();
 });
 
-test("si el insert del evento falla, registra y la cola sigue", async () => {
+test("si el insert del evento falla, registra y la cola del mismo chat sigue", async () => {
   const err = vi.spyOn(console, "error").mockImplementation(() => {});
   const { api, e } = setup();
   e.enqueue(viol({ chatId: 999 }));
+  e.enqueue(viol({ chatId: 999, messageIds: [8] }));
+  await e.drain();
+  expect(api.deleteMessages).toHaveBeenCalledWith(999, [8]);
+  expect(err).toHaveBeenCalled();
+  err.mockRestore();
+});
+
+test("si el procesamiento rechaza, registra y el siguiente del mismo chat se ejecuta", async () => {
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { api, e } = setup();
+  const bad = viol();
+  Object.defineProperty(bad, "messageIds", { get() { throw new Error("roto"); } });
+  e.enqueue(bad);
   e.enqueue(viol({ messageIds: [8] }));
   await e.drain();
+  expect(err).toHaveBeenCalled();
   expect(api.deleteMessages).toHaveBeenCalledWith(1, [8]);
   expect(events()).toHaveLength(1);
-  expect(err).toHaveBeenCalled();
   err.mockRestore();
 });
