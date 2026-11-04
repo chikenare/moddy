@@ -1,7 +1,14 @@
+name: telegram-bot
+
 services:
   bot:
     build:
       context: .
       target: prod
     env_file: .env
+    volumes:
+      - data:/app/data
     restart: unless-stopped
+
+volumes:
+  data:

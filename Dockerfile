@@ -23,5 +23,6 @@ FROM base AS prod
 ENV NODE_ENV=production
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 CMD ["node", "dist/index.js"]

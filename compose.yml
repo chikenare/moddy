@@ -1,3 +1,5 @@
+name: telegram-bot
+
 services:
   bot:
     build:
@@ -7,7 +9,14 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+      - data:/app/data
     restart: unless-stopped
+
+networks:
+  default:
+    name: traefik
+    external: true
 
 volumes:
   node_modules:
+  data:
