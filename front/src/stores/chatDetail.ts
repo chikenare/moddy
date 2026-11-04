@@ -75,7 +75,10 @@ export function useChatDetailStore(id: number) {
 
     async function unban(eventId: number) {
       const updated = await api.unban(id, eventId);
-      events.value = events.value.map((ev) => (ev.id === eventId ? updated : ev));
+      events.value = events.value.map((ev) =>
+        ev.id === eventId ? updated
+          : ev.senderType === updated.senderType && ev.senderId === updated.senderId ? { ...ev, unbannedAt: updated.unbannedAt }
+          : ev);
       return updated;
     }
 

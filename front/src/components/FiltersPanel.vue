@@ -24,7 +24,12 @@ async function save(patch: Partial<ChatSettings>) {
 }
 
 const linkWarning = computed(
-  () => chat.value.moderationEnabled && chat.value.linkFilterEnabled && store.whitelist.length === 0,
+  () => chat.value.linkFilterEnabled && store.whitelist.length === 0,
+)
+const linkWarningText = computed(() =>
+  chat.value.linkFilterAction === 'delete_ban'
+    ? 'Cualquier enlace de un miembro provocará un ban.'
+    : 'Cualquier enlace de un miembro se borrará.',
 )
 
 const filters = [
@@ -70,7 +75,7 @@ function commitFlood(key: 'floodCount' | 'floodSeconds', value: string | number)
 
     <Alert v-if="linkWarning" variant="destructive">
       <TriangleAlert />
-      <AlertDescription>Cualquier enlace de un miembro provocará un ban</AlertDescription>
+      <AlertDescription>{{ linkWarningText }}</AlertDescription>
     </Alert>
 
     <Card v-for="f in filters" :key="f.enabled" class="py-4">
@@ -95,12 +100,12 @@ function commitFlood(key: 'floodCount' | 'floodSeconds', value: string | number)
         </div>
         <div v-if="f.enabled === 'floodFilterEnabled'" class="flex flex-wrap items-center gap-2 text-sm">
           <Input
-            v-model="count" type="number" min="2" inputmode="numeric" class="w-20" aria-label="Mensajes"
+            v-model="count" type="number" min="2" max="50" inputmode="numeric" class="w-20" aria-label="Mensajes"
             @change="commitFlood('floodCount', count)"
           />
           <span>mensajes en</span>
           <Input
-            v-model="seconds" type="number" min="1" inputmode="numeric" class="w-20" aria-label="Segundos"
+            v-model="seconds" type="number" min="1" max="3600" inputmode="numeric" class="w-20" aria-label="Segundos"
             @change="commitFlood('floodSeconds', seconds)"
           />
           <span>segundos</span>

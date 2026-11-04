@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { TriangleAlert } from '@lucide/vue'
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -14,6 +14,7 @@ import type { ChatRecord } from '@/lib/api'
 import { useChatsStore } from '@/stores/chats'
 
 const store = useChatsStore()
+onMounted(() => store.load())
 
 const typeLabels = { group: 'Grupo', supergroup: 'Supergrupo', channel: 'Canal' } as const
 
@@ -63,7 +64,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
           <Badge v-if="isInactive(c)" variant="outline">Inactivo</Badge>
           <Badge v-else-if="c.moderationEnabled" variant="default">Encendido</Badge>
           <Badge v-else variant="secondary">Apagado</Badge>
-                    <Button variant="outline" size="sm" @click="askForget(c)">Salir y olvidar</Button>
+          <Button variant="outline" size="sm" @click="askForget(c)">Salir y olvidar</Button>
         </div>
         <Alert v-if="needsAdmin(c)" variant="destructive">
           <TriangleAlert />
@@ -78,6 +79,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
           <AlertDialogTitle>¿Salir de {{ target?.title }}?</AlertDialogTitle>
           <AlertDialogDescription>
             El bot saldrá del chat y se borrarán su configuración, listas y registro de eventos.
+            Los bans ya aplicados siguen vigentes en Telegram y no podrás deshacerlos desde aquí.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

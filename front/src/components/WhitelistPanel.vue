@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { X } from '@lucide/vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,24 @@ async function add() {
   }
 }
 
+const suggestions = computed(() => {
+  const chat = store.chat
+  if (!chat) return []
+  const found: string[] = []
+  const id = String(chat.id)
+  if (chat.type === 'supergroup' && id.startsWith('-100')) found.push(`t.me/c/${id.slice(4)}`)
+  if (chat.username) found.push(`t.me/${chat.username.toLowerCase()}`)
+  return found.filter((entry) => !store.whitelist.includes(entry))
+})
+
+async function addSuggestion(entry: string) {
+  try {
+    await store.addEntry(entry)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'No se pudo agregar la entrada')
+  }
+}
+
 async function remove(entry: string) {
   try {
     await store.removeEntry(entry)
@@ -52,6 +70,16 @@ async function remove(entry: string) {
       </div>
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
     </form>
+    <div v-if="suggestions.length" class="space-y-2">
+      <p class="text-sm text-muted-foreground">
+        Los enlaces a mensajes de este grupo también cuentan. Para permitirlos, agrega:
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <Button v-for="s in suggestions" :key="s" type="button" variant="outline" size="sm" @click="addSuggestion(s)">
+          {{ s }}
+        </Button>
+      </div>
+    </div>
     <p v-if="!store.whitelist.length" class="text-sm text-muted-foreground">La lista blanca está vacía</p>
     <ul v-else class="flex flex-wrap gap-2">
       <li v-for="e in store.whitelist" :key="e">
