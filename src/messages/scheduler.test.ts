@@ -266,3 +266,42 @@ test("two ticks in a row do not duplicate the message", async () => {
   expect(sendMessage).toHaveBeenCalledTimes(1);
   expect(listMessages(db)).toHaveLength(1);
 });
+
+test("a stop of five months still sends the run that is 2 minutes old, once", async () => {
+  clock = at("2026-06-10T09:02:00Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule({ cron: "* * * * *", nextRunAt: at("2026-01-10T09:00:00Z"), chatIds: [-1] });
+  await scheduler.tick();
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+  expect(listMessages(db)).toMatchObject([{ sendAt: at("2026-06-10T09:02:00Z") }]);
+  expect(getRecurring(db, r.id)!.nextRunAt).toBe(at("2026-06-10T09:03:00Z"));
+});
+
+test("a daily rule after a five-month stop sends nothing when its last run is over an hour old", async () => {
+  clock = at("2026-06-10T11:00:00Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule({ nextRunAt: at("2026-01-10T09:00:00Z") });
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(getRecurring(db, r.id)!.nextRunAt).toBe(at("2026-06-11T09:00:00Z"));
+});
+
+test("chats the bot left or was removed from are skipped", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  db.prepare("UPDATE chats SET bot_status = 'left' WHERE id = -2").run();
+  rule();
+  await scheduler.tick();
+  expect(sendMessage.mock.calls.map((c) => c[0])).toEqual([-1]);
+});
+
+test("when the bot left every chat no message is made and the rule moves on", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  db.prepare("UPDATE chats SET bot_status = 'kicked'").run();
+  const r = rule();
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(listMessages(db)).toHaveLength(0);
+  expect(getRecurring(db, r.id)).toMatchObject({ enabled: true, nextRunAt: at("2026-01-11T09:00:00Z") });
+});

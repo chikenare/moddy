@@ -2,6 +2,8 @@ import type { Api } from "grammy";
 
 const HOUR_MS = 60 * 60 * 1000;
 // A failure may be temporary, so it is retried sooner than a real answer.
+// A hung download would otherwise hold the server open during shutdown.
+const DOWNLOAD_TIMEOUT_MS = 10_000;
 const FAILURE_MS = 60 * 1000;
 
 export type PhotoFetcher = (chatId: number) => Promise<Uint8Array | null>;
@@ -29,7 +31,9 @@ export function createPhotoFetcher(deps: {
       if (!fileId) return { value: null, ttl: HOUR_MS };
       const file = await deps.api.getFile(fileId);
       if (!file.file_path) return { value: null, ttl: HOUR_MS };
-      const res = await doFetch(`https://api.telegram.org/file/bot${deps.token}/${file.file_path}`);
+      const res = await doFetch(`https://api.telegram.org/file/bot${deps.token}/${file.file_path}`, {
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`Download failed with status ${res.status}`);
       return { value: new Uint8Array(await res.arrayBuffer()), ttl: HOUR_MS };
     } catch (e) {

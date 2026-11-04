@@ -21,7 +21,7 @@ test("returns the photo bytes and serves repeats from the cache for an hour", as
   const { fetcher, api, fetch, advance } = setup();
   expect([...(await fetcher(-5))!]).toEqual([1, 2, 3]);
   expect(api.getFile).toHaveBeenCalledWith("F1");
-  expect(fetch).toHaveBeenCalledWith(`https://api.telegram.org/file/bot${TOKEN}/photos/a.jpg`);
+  expect(fetch).toHaveBeenCalledWith(`https://api.telegram.org/file/bot${TOKEN}/photos/a.jpg`, { signal: expect.any(AbortSignal) });
   await fetcher(-5);
   expect(api.getChat).toHaveBeenCalledTimes(1);
   advance(60 * 60 * 1000 + 1);

@@ -12,8 +12,6 @@ const TICK_MS = 15_000;
 const GAP_MS = 50;
 const ATTEMPTS = 3;
 const MAX_LATE_SECONDS = 3600;
-// Bounds the walk over missed runs after a long stop; anything that old is far past the lateness limit anyway.
-const MAX_MISSED_RUNS = 20_000;
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function createScheduler(deps: {
@@ -27,6 +25,12 @@ export function createScheduler(deps: {
   let rerun = false;
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
+
+  // A chat the bot left would only add failed targets on every run.
+  const isGone = (chatId: number) => {
+    const row = db.prepare("SELECT bot_status FROM chats WHERE id = ?").get(chatId) as { bot_status: string } | undefined;
+    return row?.bot_status === "left" || row?.bot_status === "kicked";
+  };
 
   async function send(target: DueTarget): Promise<void> {
     for (let attempt = 1; ; attempt++) {
@@ -61,17 +65,19 @@ export function createScheduler(deps: {
   }
 
   // Missed runs collapse into the latest one, which is dropped when it is over an hour late.
+  // The walk starts an hour back (never before the stored run), so a long stop costs nothing.
   function materialize(rule: Recurring): void {
     const at = now();
-    let latest = rule.nextRunAt!;
-    let next = nextRun(rule.cron, rule.timezone, latest);
-    for (let i = 0; next !== null && next <= at && i < MAX_MISSED_RUNS; i++) {
+    const first = nextRun(rule.cron, rule.timezone, Math.max(rule.nextRunAt! - 1, at - MAX_LATE_SECONDS - 1));
+    let latest: number | null = null;
+    let next = first;
+    while (next !== null && next <= at) {
       latest = next;
       next = nextRun(rule.cron, rule.timezone, latest);
     }
-    if (next !== null && next <= at) next = nextRun(rule.cron, rule.timezone, at);
-    const inTime = latest <= at && at - latest <= MAX_LATE_SECONDS;
-    fireRecurring(db, rule, { sendAt: inTime && rule.chats.length ? latest : null, nextRunAt: rule.chats.length ? next : null }, at);
+    const active = rule.chats.filter((c) => !isGone(c.id));
+    const send = latest !== null && active.length > 0;
+    fireRecurring(db, { ...rule, chats: active }, { sendAt: send ? latest : null, nextRunAt: rule.chats.length ? next : null }, at);
   }
 
   async function run(): Promise<void> {
