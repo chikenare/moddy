@@ -4,7 +4,7 @@ Fecha: 2026-11-04. Estado: pendiente de aprobación.
 
 ## Por qué
 
-El bot de PlayHub+ (grammY, TypeScript, long polling, sin base de datos) hoy solo vende planes con Telegram Stars. Su dueño lo va a integrar en sus grupos y quiere que el spam desaparezca sin moderar a mano, y poder ajustar todo desde una interfaz web, no con comandos de Telegram.
+El bot (grammY, TypeScript, long polling, sin base de datos) hoy solo vende planes con Telegram Stars. Su dueño lo va a integrar en sus grupos y quiere que el spam desaparezca sin moderar a mano, y poder ajustar todo desde una interfaz web, no con comandos de Telegram.
 
 ## Objetivos
 
@@ -26,6 +26,7 @@ El bot de PlayHub+ (grammY, TypeScript, long polling, sin base de datos) hoy sol
 - Modo Bot-to-Bot de BotFather (ver "Filtro de bots").
 - Lista de usuarios de confianza que no sean admins.
 - Acceso al panel por VPN o dominio público: llega junto con el login.
+- Quitar la API externa de planes (`api.playhub-plus.com`) y rediseñar las suscripciones. El dueño lo dejó para después; el flujo actual de planes y pagos no cambia.
 
 ## Anti-objetivos: esto sería un fracaso aunque funcione
 
@@ -49,6 +50,8 @@ El bot de PlayHub+ (grammY, TypeScript, long polling, sin base de datos) hoy sol
 - Sin login por ahora.
 - Grupos y canales con configuración separada.
 - Todo se ejecuta con Docker.
+- En desarrollo el panel se abre en `http://bot.localhost`, por el Traefik que ya está corriendo y solo por HTTP.
+- El código deja de llamarse PlayHub+. El dueño renombra la carpeta después.
 
 ## Decisiones del diseñador (el dueño puede cambiarlas)
 
@@ -63,7 +66,8 @@ El bot de PlayHub+ (grammY, TypeScript, long polling, sin base de datos) hoy sol
 | Canales sin filtros (ver "Canales") | En un canal solo publican admins |
 | Conducta de `APP_ENV` (ver abajo) | El dueño pidió que difiera; la diferencia concreta la propone este diseño |
 | Historial con retención de 90 días y texto truncado a 1000 caracteres; los bans vigentes se conservan sin texto | Permite auditar sin guardar mensajes para siempre, y un ban antiguo sigue pudiéndose deshacer desde el panel |
-| Acceso al panel solo por túnel SSH | Sin login, cualquier otra vía expone un panel que puede banear |
+| Acceso al panel en producción solo por túnel SSH | Sin login, cualquier otra vía expone un panel que puede banear |
+| Nombre neutro `telegram-bot` para paquete y proyecto de Docker | El dueño quitó la marca sin indicar otro nombre; textos del bot sin marca |
 
 ## Comportamiento del detector
 
@@ -193,9 +197,9 @@ Hono en `/api`, JSON. Las escrituras validan su entrada y responden 4xx con un m
 | `PATCH /api/chats/:id` | Actualización parcial de la configuración |
 | `DELETE /api/chats/:id` | Salir del grupo y borrar sus datos |
 | `GET`, `POST /api/chats/:id/words` | Listar y agregar palabras |
-| `DELETE /api/chats/:id/words/:word` | Quitar palabra |
+| `DELETE /api/chats/:id/words?word=...` | Quitar palabra |
 | `GET`, `POST /api/chats/:id/whitelist` | Listar y agregar entradas |
-| `DELETE /api/chats/:id/whitelist/:entry` | Quitar entrada |
+| `DELETE /api/chats/:id/whitelist?entry=...` | Quitar entrada (va en la query porque `t.me/micanal` contiene `/`) |
 | `GET /api/chats/:id/events` | Historial paginado por cursor |
 | `POST /api/chats/:id/events/:eventId/unban` | Desbanear y marcar el evento |
 
@@ -216,17 +220,18 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en español. 
 
 ## Acceso sin login y despliegue
 
-Una versión anterior de este plan proponía dejar la API "solo en la red interna de Docker". Eso no basta: el navegador no está en esa red, así que el panel siempre necesita un puerto publicado. El esquema correcto es:
+La API no publica ningún puerto en ningún entorno: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`.
 
-- La API no publica ningún puerto. Solo la alcanza el contenedor del panel.
-- El panel publica su puerto **únicamente en `127.0.0.1`** y hace proxy de `/api` hacia `bot:3000`.
-  - Desarrollo: servidor de Vite en `127.0.0.1:5173`.
-  - Producción: nginx con el build en `127.0.0.1:8080`, accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8080 servidor`).
-- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel local. Acepta `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite y nginx reenvían el `Host` original del navegador.
+- **Desarrollo:** el servidor de Vite tampoco publica puertos. Se entra por Traefik en `http://bot.localhost`, solo HTTP, sin certificado. Los servicios viven en la red externa `traefik`, como los demás proyectos.
+- **Producción:** nginx con el build publica el puerto **únicamente en `127.0.0.1:8088`**, accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`). El 8080 lo ocupa el dashboard de Traefik.
+- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite y nginx reenvían el `Host` original del navegador.
+
+Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar al panel enviando ese `Host`. Se acepta en desarrollo, igual que los otros paneles de esa máquina, y se resuelve con el login.
 
 Cambios de infraestructura:
 
-- `compose.yml` y `compose.prod.yml`: servicio `front` y volumen con nombre `data` en `/app/data`.
+- `compose.yml` y `compose.prod.yml`: `name: telegram-bot`, para que renombrar la carpeta no deje huérfano el volumen de la base; servicio `bot-front`; volumen con nombre `data` en `/app/data`.
+- `compose.yml`: red externa `traefik` y labels del panel (un solo router, entrypoint `web`).
 - `Dockerfile`: crear `/app/data` con dueño `node` antes de `USER node`, o la imagen de producción no podrá escribir la base.
 - `.dockerignore`: agregar `front`, `data`, `docs`. `.gitignore`: agregar `data/`.
 - `.env.example`: agregar `APP_ENV`, `API_PORT` y `DATABASE_PATH` (opcional).
@@ -252,7 +257,7 @@ Pruebas automatizadas sobre la lógica pura y la API con SQLite en memoria, sin 
 
 Prueba manual en el grupo de prueba real, con los contenedores levantados:
 
-1. El grupo aparece apagado en el panel después de escribir un mensaje, y se enciende desde ahí.
+1. El grupo aparece apagado en `http://bot.localhost` después de escribir un mensaje, y se enciende desde ahí.
 2. Cada filtro actúa, y el flujo de `/planes` y pago sigue funcionando.
 3. Con `APP_ENV=production` y una segunda cuenta: ban real y desbaneo desde el panel.
 
