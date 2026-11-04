@@ -16,7 +16,7 @@ onMounted(() => store.load())
       Modo desarrollo: los bans son simulados
     </div>
     <main class="mx-auto max-w-3xl px-4 py-8">
-      <RouterView />
+      <RouterView :key="$route.fullPath" />
     </main>
     <Toaster />
   </div>

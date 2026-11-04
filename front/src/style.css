@@ -125,3 +125,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* shadcn-vue (reka) emite data-state y data-orientation, no los atributos booleanos de radix */
+@custom-variant data-checked (&[data-state="checked"]);
+@custom-variant data-unchecked (&[data-state="unchecked"]);
+@custom-variant data-active (&[data-state="active"]);
+@custom-variant data-open (&[data-state="open"]);
+@custom-variant data-closed (&[data-state="closed"]);
+@custom-variant data-horizontal (&[data-orientation="horizontal"]);

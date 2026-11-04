@@ -24,8 +24,6 @@ const target = ref<ChatRecord | null>(null)
 const dialogOpen = ref(false)
 const busy = ref(false)
 
-watch(dialogOpen, (open) => { if (!open) target.value = null })
-
 const askForget = (c: ChatRecord) => { target.value = c; dialogOpen.value = true }
 
 async function confirmForget() {
@@ -59,13 +57,13 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
       <CardContent class="space-y-3 px-4">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div class="min-w-0 flex-1">
-            <div class="truncate font-medium">{{ c.title }}</div>
+            <RouterLink :to="`/chats/${c.id}`" class="block truncate font-medium hover:underline">{{ c.title }}</RouterLink>
             <div class="text-sm text-muted-foreground">{{ typeLabels[c.type] }}</div>
           </div>
           <Badge v-if="isInactive(c)" variant="outline">Inactivo</Badge>
           <Badge v-else-if="c.moderationEnabled" variant="default">Encendido</Badge>
           <Badge v-else variant="secondary">Apagado</Badge>
-          <Button variant="outline" size="sm" @click="askForget(c)">Salir y olvidar</Button>
+                    <Button variant="outline" size="sm" @click="askForget(c)">Salir y olvidar</Button>
         </div>
         <Alert v-if="needsAdmin(c)" variant="destructive">
           <TriangleAlert />
