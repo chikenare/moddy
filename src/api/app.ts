@@ -4,14 +4,16 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { normalizeFormatted } from "../community/formatting.js";
 import { type FormattedEntity, deleteAutoReply, getAutoReply, insertAutoReply, listAutoReplies, updateAutoReply } from "../db/auto-replies.js";
-import { deleteChat, getChat, listChats, updateChatSettings } from "../db/chats.js";
+import { type ChatSettings, deleteChat, getChat, listChats, updateChatSettings } from "../db/chats.js";
 import type { Db } from "../db/connection.js";
 import { getEvent, isActiveBan, listEvents, markUnbanned } from "../db/events.js";
 import { addWhitelistEntry, addWord, listWhitelist, listWords, removeWhitelistEntry, removeWord } from "../db/lists.js";
 import { cancelMessage, createMessage, getMessage, listMessages } from "../db/messages.js";
+import { type RecurringInput, createRecurring, deleteRecurring, getRecurring, listRecurring, setRecurringEnabled, updateRecurring } from "../db/recurring.js";
 import { addStaff, findSeenUser, listStaff, removeStaff } from "../db/staff.js";
 import type { AppEnv } from "../env.js";
 import { normalizeWhitelistEntry } from "../moderation/links.js";
+import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
 import { hostOriginGuard } from "./guard.js";
 
@@ -24,11 +26,13 @@ const USER_ID = /^\d{1,15}$/;
 const USERNAME = /^@?([a-zA-Z][a-zA-Z0-9_]{3,31})$/;
 const MAX_TRIGGERS = 20;
 const MAX_REPLY = 4000;
+const MAX_RULES = 4000;
 const MAX_ENTITIES = 100;
 const MAX_MESSAGE = 4000;
 const SCHEDULE_TOLERANCE_SECONDS = 60;
 const MAX_SCHEDULE_SECONDS = 366 * 24 * 60 * 60;
 
+const entityBody = z.object({ type: z.string(), offset: z.number(), length: z.number(), url: z.string().optional() });
 const action = z.enum(["delete", "delete_ban"]);
 const patchSchema = z.object({
   moderationEnabled: z.boolean(),
@@ -40,14 +44,30 @@ const patchSchema = z.object({
   botFilterEnabled: z.boolean(),
   noticeEnabled: z.boolean(),
   noticeTemplate: z.string().trim().min(1).max(500),
-  rules: z.string().trim().max(4000),
+  // Not trimmed here: entity offsets refer to the text as typed; normalizeFormatted trims both together.
+  rules: z.string(),
+  rulesEntities: z.array(entityBody).max(1000),
   autoRepliesEnabled: z.boolean(),
 }).partial().strict();
 
 const textBody = (key: string) => z.object({ [key]: z.string() });
-const entityBody = z.object({ type: z.string(), offset: z.number(), length: z.number(), url: z.string().optional() });
 const autoReplyBody = z.object({ triggers: z.array(z.string()), reply: z.string(), entities: z.array(entityBody).max(1000).optional() });
-const messageBody = z.object({ text: z.string(), chatIds: z.array(z.number().int()), sendAt: z.number().int().nullable() });
+const messageBody = z.object({
+  text: z.string(), entities: z.array(entityBody).max(1000).optional(),
+  chatIds: z.array(z.number().int()), sendAt: z.number().int().nullable(),
+});
+const recurringBody = z.object({
+  text: z.string(), entities: z.array(entityBody).max(1000).optional(),
+  chatIds: z.array(z.number().int()), cron: z.string(), timezone: z.string(),
+});
+
+function parseMessageText(text: string, entities: unknown[] | undefined): { text: string; entities: FormattedEntity[] } | { error: string } {
+  const formatted = normalizeFormatted(text, (entities ?? []) as FormattedEntity[]);
+  if (!formatted) return { error: "Invalid formatting" };
+  if (!formatted.text || formatted.text.length > MAX_MESSAGE) return { error: `Message must be between 1 and ${MAX_MESSAGE} characters` };
+  if (formatted.entities.length > MAX_ENTITIES) return { error: `Too much formatting: use at most ${MAX_ENTITIES} styled parts` };
+  return formatted;
+}
 
 function parseAutoReply(data: z.infer<typeof autoReplyBody>): { triggers: string[]; reply: string; entities: FormattedEntity[] } | { error: string } {
   if (!data.triggers.length) return { error: "Add at least one trigger" };
@@ -101,6 +121,17 @@ export function createApi(deps: {
     return { data: parsed.data };
   }
 
+  function checkChats(ids: number[]): number[] | string {
+    const chatIds = [...new Set(ids)];
+    if (!chatIds.length) return "Choose at least one chat";
+    for (const id of chatIds) {
+      const chat = getChat(db, id);
+      if (!chat) return `Chat not available: ${id}`;
+      if (chat.botStatus === "left" || chat.botStatus === "kicked") return `Chat not available: ${chat.title}`;
+    }
+    return chatIds;
+  }
+
   api.get("/health", (c) => c.json({ status: "ok", appEnv, botUsername: botUsername() }));
   api.get("/chats", (c) => c.json(listChats(db)));
 
@@ -108,20 +139,15 @@ export function createApi(deps: {
   api.post("/messages", async (c) => {
     const body = await readBody(c, messageBody);
     if ("response" in body) return body.response;
-    const text = body.data.text.trim();
-    if (!text || text.length > MAX_MESSAGE) return fail(c, 400, `Message must be between 1 and ${MAX_MESSAGE} characters`);
-    const chatIds = [...new Set(body.data.chatIds)];
-    if (!chatIds.length) return fail(c, 400, "Choose at least one chat");
-    for (const id of chatIds) {
-      const chat = getChat(db, id);
-      if (!chat) return fail(c, 400, `Chat not available: ${id}`);
-      if (chat.botStatus === "left" || chat.botStatus === "kicked") return fail(c, 400, `Chat not available: ${chat.title}`);
-    }
+    const formatted = parseMessageText(body.data.text, body.data.entities);
+    if ("error" in formatted) return fail(c, 400, formatted.error);
+    const chatIds = checkChats(body.data.chatIds);
+    if (typeof chatIds === "string") return fail(c, 400, chatIds);
     const now = Math.floor(Date.now() / 1000);
     const sendAt = body.data.sendAt ?? now;
     if (sendAt < now - SCHEDULE_TOLERANCE_SECONDS) return fail(c, 400, "Choose a time in the future");
     if (sendAt > now + MAX_SCHEDULE_SECONDS) return fail(c, 400, "Choose a time within the next year");
-    const message = createMessage(db, text, chatIds, sendAt, now);
+    const message = createMessage(db, formatted.text, chatIds, sendAt, now, { entities: formatted.entities });
     onMessageQueued();
     return c.json(message, 201);
   });
@@ -130,6 +156,57 @@ export function createApi(deps: {
     if (!getMessage(db, id)) return fail(c, 404, "Message not found");
     if (!cancelMessage(db, id)) return fail(c, 409, "Nothing left to cancel");
     return c.json(getMessage(db, id)!);
+  });
+
+  const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+  // Shared by create and edit: returns what the store needs, or the message to show.
+  async function parseRecurring(c: Ctx): Promise<{ input: Omit<RecurringInput, "nextRunAt">; nextRunAt: number } | { response: Response }> {
+    const body = await readBody(c, recurringBody);
+    if ("response" in body) return body;
+    const formatted = parseMessageText(body.data.text, body.data.entities);
+    if ("error" in formatted) return { response: fail(c, 400, formatted.error) };
+    const chatIds = checkChats(body.data.chatIds);
+    if (typeof chatIds === "string") return { response: fail(c, 400, chatIds) };
+    const cron = body.data.cron.trim();
+    const check = validateRecurrence(cron, body.data.timezone, nowSeconds());
+    if ("error" in check) return { response: fail(c, 400, check.error) };
+    return { input: { text: formatted.text, entities: formatted.entities, cron, timezone: body.data.timezone, chatIds }, nextRunAt: check.nextRuns[0]! };
+  }
+
+  api.get("/recurring", (c) => c.json({ recurring: listRecurring(db) }));
+  api.get("/recurring/preview", (c) => {
+    const check = validateRecurrence((c.req.query("cron") ?? "").trim(), c.req.query("timezone") ?? "", nowSeconds());
+    return "error" in check ? fail(c, 400, check.error) : c.json({ nextRuns: check.nextRuns });
+  });
+  api.post("/recurring", async (c) => {
+    const parsed = await parseRecurring(c);
+    if ("response" in parsed) return parsed.response;
+    return c.json(createRecurring(db, { ...parsed.input, nextRunAt: parsed.nextRunAt }), 201);
+  });
+  api.put("/recurring/:rid{\\d+}", async (c) => {
+    const id = Number(c.req.param("rid"));
+    const current = getRecurring(db, id);
+    if (!current) return fail(c, 404, "Recurring message not found");
+    const parsed = await parseRecurring(c);
+    if ("response" in parsed) return parsed.response;
+    return c.json(updateRecurring(db, id, { ...parsed.input, nextRunAt: current.enabled ? parsed.nextRunAt : null })!);
+  });
+  api.delete("/recurring/:rid{\\d+}", (c) => {
+    if (!deleteRecurring(db, Number(c.req.param("rid")))) return fail(c, 404, "Recurring message not found");
+    return c.body(null, 204);
+  });
+  api.post("/recurring/:rid{\\d+}/pause", (c) => {
+    const id = Number(c.req.param("rid"));
+    if (!getRecurring(db, id)) return fail(c, 404, "Recurring message not found");
+    return c.json(setRecurringEnabled(db, id, false, null)!);
+  });
+  api.post("/recurring/:rid{\\d+}/resume", (c) => {
+    const id = Number(c.req.param("rid"));
+    const rule = getRecurring(db, id);
+    if (!rule) return fail(c, 404, "Recurring message not found");
+    if (!rule.chats.length) return fail(c, 409, "This message has no chats left");
+    return c.json(setRecurringEnabled(db, id, true, nextRun(rule.cron, rule.timezone, nowSeconds()))!);
   });
 
   const chatRoute = `/chats/:id{${ID}}`;
@@ -147,7 +224,21 @@ export function createApi(deps: {
     if (body.data.moderationEnabled && getChat(db, id)!.type === "channel") {
       return fail(c, 400, "A channel cannot be moderated: it has no messages from other users");
     }
-    return c.json(updateChatSettings(db, id, body.data)!);
+    const { rulesEntities: _ignored, ...rest } = body.data;
+    const patchData: Partial<ChatSettings> = { ...rest };
+    if (body.data.rules !== undefined || body.data.rulesEntities !== undefined) {
+      const current = getChat(db, id)!;
+      // Text without formatting means the new text is plain; formatting alone applies to the stored text.
+      const text = body.data.rules ?? current.rules;
+      const entities = (body.data.rulesEntities ?? (body.data.rules !== undefined ? [] : current.rulesEntities)) as FormattedEntity[];
+      const formatted = normalizeFormatted(text, entities);
+      if (!formatted) return fail(c, 400, "Invalid formatting");
+      if (formatted.text.length > MAX_RULES) return fail(c, 400, `Rules must be at most ${MAX_RULES} characters`);
+      if (formatted.entities.length > MAX_ENTITIES) return fail(c, 400, `Too much formatting: use at most ${MAX_ENTITIES} styled parts`);
+      patchData.rules = formatted.text;
+      patchData.rulesEntities = formatted.entities;
+    }
+    return c.json(updateChatSettings(db, id, patchData)!);
   });
 
   api.delete(chatRoute, async (c) => {

@@ -1,3 +1,4 @@
+import type { FormattedEntity } from "./auto-replies.js";
 import type { Db } from "./connection.js";
 
 export type ChatType = "group" | "supergroup" | "channel";
@@ -12,10 +13,10 @@ export interface ChatRecord {
   floodCount: number; floodSeconds: number;
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
-  rules: string; autoRepliesEnabled: boolean;
+  rules: string; rulesEntities: FormattedEntity[]; autoRepliesEnabled: boolean;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "autoRepliesEnabled">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled">;
 export type ChatInfo = Partial<Pick<ChatRecord, "title" | "username" | "botStatus" | "canDelete" | "canRestrict" | "linkedChatId" | "type">>;
 
 type Row = Record<string, number | string | null>;
@@ -30,7 +31,7 @@ const COLUMNS: Record<keyof ChatRecord, string> = {
   floodCount: "flood_count", floodSeconds: "flood_seconds",
   botFilterEnabled: "bot_filter_enabled",
   noticeEnabled: "notice_enabled", noticeTemplate: "notice_template",
-  rules: "rules", autoRepliesEnabled: "auto_replies_enabled",
+  rules: "rules", rulesEntities: "rules_entities", autoRepliesEnabled: "auto_replies_enabled",
   createdAt: "created_at", updatedAt: "updated_at",
 };
 
@@ -39,12 +40,13 @@ const BOOLEANS = new Set<string>(["canDelete", "canRestrict", "moderationEnabled
 function toRecord(row: Row): ChatRecord {
   const out: Record<string, unknown> = {};
   for (const [key, col] of Object.entries(COLUMNS)) {
-    out[key] = BOOLEANS.has(key) ? row[col] === 1 : row[col];
+    out[key] = BOOLEANS.has(key) ? row[col] === 1 : key === "rulesEntities" ? JSON.parse(row[col] as string) : row[col];
   }
   return out as unknown as ChatRecord;
 }
 
 function toDbValue(value: unknown): unknown {
+  if (Array.isArray(value)) return JSON.stringify(value);
   return typeof value === "boolean" ? (value ? 1 : 0) : value;
 }
 

@@ -13,10 +13,10 @@ export interface ChatRecord {
   floodCount: number; floodSeconds: number;
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
-  rules: string; autoRepliesEnabled: boolean;
+  rules: string; rulesEntities: FormattedEntity[]; autoRepliesEnabled: boolean;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "autoRepliesEnabled">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled">;
 
 export interface EventRecord {
   id: number; chatId: number; senderType: SenderType; senderId: number; senderName: string;
@@ -36,7 +36,14 @@ export interface FormattedMessage { text: string; entities: FormattedEntity[] }
 export interface AutoReply { id: number; chatId: number; triggers: string[]; reply: string; entities: FormattedEntity[]; createdAt: number }
 export type TargetStatus = "pending" | "sending" | "sent" | "failed" | "missed" | "cancelled";
 export interface MessageTarget { chatId: number; title: string; status: TargetStatus; error: string | null; sentAt: number | null }
-export interface ScheduledMessage { id: number; text: string; sendAt: number; createdAt: number; targets: MessageTarget[] }
+export interface ScheduledMessage {
+  id: number; text: string; entities: FormattedEntity[]; sendAt: number; createdAt: number; recurringId: number | null; targets: MessageTarget[]
+}
+export interface RecurringMessage {
+  id: number; text: string; entities: FormattedEntity[]; cron: string; timezone: string; enabled: boolean
+  nextRunAt: number | null; lastRunAt: number | null; createdAt: number; chats: { id: number; title: string }[]
+}
+export interface RecurringInput { text: string; entities: FormattedEntity[]; chatIds: number[]; cron: string; timezone: string }
 
 export class ApiError extends Error {
   status: number;
@@ -96,7 +103,15 @@ export const api = {
     request<AutoReply>("PUT", `${chat(id)}/auto-replies/${replyId}`, { triggers, reply: message.text, entities: message.entities }),
   removeAutoReply: (id: number, replyId: number) => request<void>("DELETE", `${chat(id)}/auto-replies/${replyId}`),
   listMessages: async () => (await request<{ messages: ScheduledMessage[] }>("GET", "/messages")).messages,
-  sendMessage: (text: string, chatIds: number[], sendAt: number | null) =>
-    request<ScheduledMessage>("POST", "/messages", { text, chatIds, sendAt }),
+  sendMessage: (message: FormattedMessage, chatIds: number[], sendAt: number | null) =>
+    request<ScheduledMessage>("POST", "/messages", { text: message.text, entities: message.entities, chatIds, sendAt }),
+  listRecurring: async () => (await request<{ recurring: RecurringMessage[] }>("GET", "/recurring")).recurring,
+  previewRecurring: async (cron: string, timezone: string) =>
+    (await request<{ nextRuns: number[] }>("GET", `/recurring/preview?cron=${encodeURIComponent(cron)}&timezone=${encodeURIComponent(timezone)}`)).nextRuns,
+  createRecurring: (input: RecurringInput) => request<RecurringMessage>("POST", "/recurring", input),
+  updateRecurring: (id: number, input: RecurringInput) => request<RecurringMessage>("PUT", `/recurring/${id}`, input),
+  deleteRecurring: (id: number) => request<void>("DELETE", `/recurring/${id}`),
+  pauseRecurring: (id: number) => request<RecurringMessage>("POST", `/recurring/${id}/pause`),
+  resumeRecurring: (id: number) => request<RecurringMessage>("POST", `/recurring/${id}/resume`),
   cancelMessage: (id: number) => request<ScheduledMessage>("POST", `/messages/${id}/cancel`),
 };

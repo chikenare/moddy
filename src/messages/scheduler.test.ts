@@ -2,7 +2,8 @@ import { GrammyError } from "grammy";
 import { beforeEach, expect, test, vi } from "vitest";
 import { insertChat } from "../db/chats.js";
 import { type Db, openDatabase } from "../db/connection.js";
-import { cancelMessage, createMessage, getMessage } from "../db/messages.js";
+import { cancelMessage, createMessage, getMessage, listMessages } from "../db/messages.js";
+import { createRecurring, getRecurring, setRecurringEnabled } from "../db/recurring.js";
 import { type SchedulerApi, createScheduler } from "./scheduler.js";
 
 const NOW = 1_000_000;
@@ -181,4 +182,87 @@ test("a database error during a run is logged and does not reject", async () => 
   await expect(scheduler.tick()).resolves.toBeUndefined();
   expect(spy).toHaveBeenCalled();
   spy.mockRestore();
+});
+
+const at = (iso: string) => Date.parse(iso) / 1000;
+const rule = (o: Partial<Parameters<typeof createRecurring>[1]> = {}) =>
+  createRecurring(db, { text: "Daily", entities: [], cron: "0 9 * * *", timezone: "UTC", chatIds: [-1, -2], nextRunAt: at("2026-01-10T09:00:00Z"), ...o }, NOW);
+
+test("a due recurring rule creates a message for its chats, sends it and advances", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule();
+  await scheduler.tick();
+  expect(sendMessage).toHaveBeenCalledTimes(2);
+  const messages = listMessages(db);
+  expect(messages).toMatchObject([{ text: "Daily", recurringId: r.id, sendAt: at("2026-01-10T09:00:00Z") }]);
+  expect(statuses(messages[0]!.id)).toEqual({ "-1": "sent", "-2": "sent" });
+  expect(getRecurring(db, r.id)).toMatchObject({ nextRunAt: at("2026-01-11T09:00:00Z"), lastRunAt: at("2026-01-10T09:00:00Z") });
+});
+
+test("the formatting of a recurring rule reaches Telegram", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  const entities = [{ type: "bold" as const, offset: 0, length: 5 }];
+  rule({ entities, chatIds: [-1] });
+  await scheduler.tick();
+  expect(sendMessage).toHaveBeenCalledWith(-1, "Daily", { link_preview_options: { is_disabled: true }, entities });
+});
+
+test("a rule that is not due yet produces nothing", async () => {
+  clock = at("2026-01-10T08:59:00Z");
+  const { sendMessage, scheduler } = setup();
+  rule();
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(listMessages(db)).toHaveLength(0);
+});
+
+test("after five missed runs only the latest is sent, if it is at most an hour late", async () => {
+  clock = at("2026-01-10T09:30:00Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule({ nextRunAt: at("2026-01-05T09:00:00Z"), chatIds: [-1] });
+  await scheduler.tick();
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+  expect(listMessages(db)).toMatchObject([{ sendAt: at("2026-01-10T09:00:00Z") }]);
+  expect(getRecurring(db, r.id)!.nextRunAt).toBe(at("2026-01-11T09:00:00Z"));
+});
+
+test("when the latest missed run is over an hour late nothing is sent", async () => {
+  clock = at("2026-01-10T10:30:00Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule({ nextRunAt: at("2026-01-05T09:00:00Z") });
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(listMessages(db)).toHaveLength(0);
+  expect(getRecurring(db, r.id)!.nextRunAt).toBe(at("2026-01-11T09:00:00Z"));
+});
+
+test("a paused rule does not run", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule();
+  setRecurringEnabled(db, r.id, false, null);
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(listMessages(db)).toHaveLength(0);
+});
+
+test("a rule left without chats is switched off", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  const r = rule({ chatIds: [] });
+  await scheduler.tick();
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(getRecurring(db, r.id)).toMatchObject({ enabled: false, nextRunAt: null });
+});
+
+test("two ticks in a row do not duplicate the message", async () => {
+  clock = at("2026-01-10T09:00:05Z");
+  const { sendMessage, scheduler } = setup();
+  rule({ chatIds: [-1] });
+  await scheduler.tick();
+  await scheduler.tick();
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+  expect(listMessages(db)).toHaveLength(1);
 });

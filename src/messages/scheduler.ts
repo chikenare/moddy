@@ -1,6 +1,9 @@
 import { type Api, GrammyError } from "grammy";
+import type { MessageEntity } from "grammy/types";
 import type { Db } from "../db/connection.js";
 import { type DueTarget, claimTarget, dueTargets, failInterruptedTargets, finishTarget } from "../db/messages.js";
+import { type Recurring, dueRecurring, fireRecurring } from "../db/recurring.js";
+import { nextRun } from "./recurrence.js";
 
 export type SchedulerApi = Pick<Api, "sendMessage">;
 
@@ -8,6 +11,8 @@ const TICK_MS = 15_000;
 const GAP_MS = 50;
 const ATTEMPTS = 3;
 const MAX_LATE_SECONDS = 3600;
+// Bounds the walk over missed runs after a long stop; anything that old is far past the lateness limit anyway.
+const MAX_MISSED_RUNS = 20_000;
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function createScheduler(deps: {
@@ -25,7 +30,10 @@ export function createScheduler(deps: {
   async function send(target: DueTarget): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
-        await api.sendMessage(target.chatId, target.text, { link_preview_options: { is_disabled: true } });
+        await api.sendMessage(target.chatId, target.text, {
+          link_preview_options: { is_disabled: true },
+          ...(target.entities.length ? { entities: target.entities as MessageEntity[] } : {}),
+        });
         return;
       } catch (e) {
         if (!(e instanceof GrammyError) || e.error_code !== 429 || attempt >= ATTEMPTS) throw e;
@@ -50,9 +58,24 @@ export function createScheduler(deps: {
     await sleep(GAP_MS);
   }
 
+  // Missed runs collapse into the latest one, which is dropped when it is over an hour late.
+  function materialize(rule: Recurring): void {
+    const at = now();
+    let latest = rule.nextRunAt!;
+    let next = nextRun(rule.cron, rule.timezone, latest);
+    for (let i = 0; next !== null && next <= at && i < MAX_MISSED_RUNS; i++) {
+      latest = next;
+      next = nextRun(rule.cron, rule.timezone, latest);
+    }
+    if (next !== null && next <= at) next = nextRun(rule.cron, rule.timezone, at);
+    const inTime = latest <= at && at - latest <= MAX_LATE_SECONDS;
+    fireRecurring(db, rule, { sendAt: inTime && rule.chats.length ? latest : null, nextRunAt: rule.chats.length ? next : null }, at);
+  }
+
   async function run(): Promise<void> {
     do {
       rerun = false;
+      for (const rule of dueRecurring(db, now())) materialize(rule);
       for (const target of dueTargets(db, now())) {
         if (stopped) return;
         await deliver(target);

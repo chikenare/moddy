@@ -55,6 +55,12 @@ test("/rules posts the group's rules as a reply, without a link preview", async 
   expect(nextCalled).toBe(false);
 });
 
+test("/rules keeps the formatting of the rules", async () => {
+  updateChatSettings(db, CHAT, { rules: "Be nice", rulesEntities: [{ type: "bold", offset: 0, length: 2 }] });
+  await run(rulesCommand());
+  expect(sent()[0]).toMatchObject({ text: "Be nice", entities: [{ type: "bold", offset: 0, length: 2 }] });
+});
+
 test("/rules with no rules set says nothing", async () => {
   await run(rulesCommand());
   expect(sent()).toHaveLength(0);

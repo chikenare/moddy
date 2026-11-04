@@ -75,6 +75,21 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE chat_auto_replies ADD COLUMN entities TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  ALTER TABLE scheduled_messages ADD COLUMN entities TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE chats ADD COLUMN rules_entities TEXT NOT NULL DEFAULT '[]';
+  CREATE TABLE recurring_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, entities TEXT NOT NULL DEFAULT '[]',
+    cron TEXT NOT NULL, timezone TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+    next_run_at INTEGER, last_run_at INTEGER, created_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE recurring_message_targets (
+    recurring_id INTEGER NOT NULL REFERENCES recurring_messages(id) ON DELETE CASCADE,
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    PRIMARY KEY (recurring_id, chat_id)
+  ) STRICT;
+  ALTER TABLE scheduled_messages ADD COLUMN recurring_id INTEGER REFERENCES recurring_messages(id) ON DELETE SET NULL;
+  `,
 ];
 
 export function openDatabase(path: string): Db {

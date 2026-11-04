@@ -2,23 +2,39 @@
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import RichTextEditor from '@/components/RichTextEditor.vue'
+import type { FormattedMessage } from '@/lib/api'
+import { EMPTY_MESSAGE } from '@/lib/formatting'
 import { useChatDetailStore } from '@/stores/chatDetail'
 
 const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
 
 const MAX = 4000
-const draft = ref(store.chat!.rules)
+const saved = (): FormattedMessage => ({ text: store.chat!.rules, entities: store.chat!.rulesEntities })
+const draft = ref<FormattedMessage>(saved())
 const busy = ref(false)
-watch(() => store.chat?.rules, (rules) => { draft.value = rules ?? '' })
+watch(() => [store.chat?.rules, store.chat?.rulesEntities], () => { draft.value = store.chat ? saved() : EMPTY_MESSAGE })
 
-const dirty = computed(() => draft.value.trim() !== store.chat!.rules)
+const dirty = computed(() => {
+  const current = saved()
+  return draft.value.text.trim() !== current.text || JSON.stringify(trimmed().entities) !== JSON.stringify(current.entities)
+})
+
+// The server trims the text and moves the styles with it; compare what it would store.
+function trimmed(): FormattedMessage {
+  const lead = draft.value.text.length - draft.value.text.trimStart().length
+  const length = draft.value.text.trim().length
+  const entities = draft.value.entities
+    .map((e) => ({ ...e, offset: Math.max(e.offset - lead, 0), length: Math.min(e.offset + e.length - lead, length) - Math.max(e.offset - lead, 0) }))
+    .filter((e) => e.length > 0)
+  return { text: draft.value.text.trim(), entities }
+}
 
 async function save() {
   busy.value = true
   try {
-    await store.update({ rules: draft.value })
+    await store.update({ rules: draft.value.text, rulesEntities: draft.value.entities })
     toast.success('Rules saved')
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Could not save the rules')
@@ -33,10 +49,10 @@ async function save() {
     <p class="text-sm text-muted-foreground">
       Members see these with <code>/rules</code> in the group, at most once a minute. Leave it empty to turn the command off.
     </p>
-    <Textarea v-model="draft" :maxlength="MAX" rows="10" placeholder="Group rules" aria-label="Group rules" />
+    <RichTextEditor v-model="draft" label="Group rules" placeholder="Group rules" />
     <div class="flex items-center justify-between gap-3">
-      <span class="text-xs text-muted-foreground">{{ draft.length }} / {{ MAX }}</span>
-      <Button type="submit" :disabled="busy || !dirty">Save</Button>
+      <span class="text-xs" :class="draft.text.length > MAX ? 'text-destructive' : 'text-muted-foreground'">{{ draft.text.length }} / {{ MAX }}</span>
+      <Button type="submit" :disabled="busy || !dirty || draft.text.length > MAX">Save</Button>
     </div>
   </form>
 </template>

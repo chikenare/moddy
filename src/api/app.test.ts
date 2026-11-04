@@ -4,6 +4,7 @@ import { getChat, insertChat, updateChatInfo } from "../db/chats.js";
 import { type Db, openDatabase } from "../db/connection.js";
 import { type NewEvent, getEvent, insertEvent } from "../db/events.js";
 import { addWord, listWords } from "../db/lists.js";
+import { fireRecurring, getRecurring } from "../db/recurring.js";
 import { recordSeenUser } from "../db/staff.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
@@ -499,4 +500,100 @@ test("ruta desconocida bajo /api da 404 JSON", async () => {
   const r = await get("/api/nada");
   expect(r.status).toBe(404);
   expect(await r.json()).toEqual({ error: expect.any(String) });
+});
+
+const put = (p: string, b: unknown) => send("PUT", p, b);
+const rule = (o: Record<string, unknown> = {}) => ({ text: "Daily", chatIds: [CHAT], cron: "0 9 * * *", timezone: "America/Mexico_City", ...o });
+const createRule = async (o: Record<string, unknown> = {}) => (await (await post("/api/recurring", rule(o))).json()) as { id: number; nextRunAt: number | null; enabled: boolean };
+
+test("messages: formatting is stored normalized and invalid formatting is refused", async () => {
+  const r = await post("/api/messages", { text: "  Hello  ", entities: [{ type: "bold", offset: 2, length: 5 }], chatIds: [CHAT], sendAt: null });
+  expect(r.status).toBe(201);
+  expect(await r.json()).toMatchObject({ text: "Hello", entities: [{ type: "bold", offset: 0, length: 5 }] });
+  const bad = await post("/api/messages", { text: "Hi", entities: [{ type: "bold", offset: 0, length: 50 }], chatIds: [CHAT], sendAt: null });
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toEqual({ error: "Invalid formatting" });
+});
+
+test("rules: formatting is saved with the text and cleared when the text is saved without it", async () => {
+  const saved = await patch("/api/chats/-100", { rules: "Be nice", rulesEntities: [{ type: "italic", offset: 0, length: 2 }] });
+  expect(await saved.json()).toMatchObject({ rules: "Be nice", rulesEntities: [{ type: "italic", offset: 0, length: 2 }] });
+  expect(await (await patch("/api/chats/-100", { rules: "Plain" })).json()).toMatchObject({ rules: "Plain", rulesEntities: [] });
+  const bad = await patch("/api/chats/-100", { rules: "x", rulesEntities: [{ type: "bold", offset: 0, length: 9 }] });
+  expect(await bad.json()).toEqual({ error: "Invalid formatting" });
+});
+
+test("recurring: creating stores the rule with its next run and wakes nothing", async () => {
+  const r = await post("/api/recurring", rule({ text: "  Daily  ", entities: [{ type: "bold", offset: 2, length: 5 }] }));
+  expect(r.status).toBe(201);
+  const body = (await r.json()) as { nextRunAt: number };
+  expect(body).toMatchObject({ text: "Daily", entities: [{ type: "bold", offset: 0, length: 5 }], enabled: true, chats: [{ id: CHAT, title: "Grupo" }] });
+  expect(body.nextRunAt).toBeGreaterThan(Date.now() / 1000);
+  expect(await (await get("/api/recurring")).json()).toMatchObject({ recurring: [{ cron: "0 9 * * *" }] });
+});
+
+test.each([
+  [{ cron: "* * * * *" }, "Messages can't repeat more often than every 5 minutes"],
+  [{ cron: "0 9 * * * *" }, "Use 5 fields: minute, hour, day of month, month, weekday"],
+  [{ cron: "99 9 * * *" }, "Invalid schedule"],
+  [{ timezone: "Mars/Base" }, "Unknown time zone: Mars/Base"],
+  [{ text: " " }, "Message must be between 1 and 4000 characters"],
+  [{ chatIds: [] }, "Choose at least one chat"],
+  [{ chatIds: [-999] }, "Chat not available: -999"],
+])("recurring: %j is refused", async (override, error) => {
+  const r = await post("/api/recurring", rule(override));
+  expect(r.status).toBe(400);
+  expect(((await r.json()) as { error: string }).error).toContain(error);
+});
+
+test("recurring: preview returns the next runs and refuses a bad schedule", async () => {
+  const ok = await get("/api/recurring/preview?cron=0%209%20*%20*%20*&timezone=UTC");
+  expect(((await ok.json()) as { nextRuns: number[] }).nextRuns).toHaveLength(5);
+  const bad = await get("/api/recurring/preview?cron=*%20*%20*%20*%20*&timezone=UTC");
+  expect(bad.status).toBe(400);
+  expect(await get("/api/recurring/preview")).toHaveProperty("status", 400);
+});
+
+test("recurring: pause clears the next run and resume recalculates it", async () => {
+  const created = await createRule();
+  const paused = await post(`/api/recurring/${created.id}/pause`);
+  expect(await paused.json()).toMatchObject({ enabled: false, nextRunAt: null });
+  const resumed = (await (await post(`/api/recurring/${created.id}/resume`)).json()) as { enabled: boolean; nextRunAt: number };
+  expect(resumed.enabled).toBe(true);
+  expect(resumed.nextRunAt).toBeGreaterThan(Date.now() / 1000);
+});
+
+test("recurring: editing recalculates the next run, and a paused rule stays paused", async () => {
+  const created = await createRule();
+  const edited = await put(`/api/recurring/${created.id}`, rule({ text: "New", cron: "0 8 * * 1" }));
+  const body = (await edited.json()) as { text: string; cron: string; nextRunAt: number };
+  expect(body).toMatchObject({ text: "New", cron: "0 8 * * 1" });
+  expect(body.nextRunAt).not.toBe(created.nextRunAt);
+  await post(`/api/recurring/${created.id}/pause`);
+  expect(await (await put(`/api/recurring/${created.id}`, rule())).json()).toMatchObject({ enabled: false, nextRunAt: null });
+  expect((await put(`/api/recurring/${created.id}`, rule({ cron: "* * * * *" }))).status).toBe(400);
+});
+
+test("recurring: unknown rules give 404", async () => {
+  expect((await put("/api/recurring/999", rule())).status).toBe(404);
+  expect((await del("/api/recurring/999")).status).toBe(404);
+  expect((await post("/api/recurring/999/pause")).status).toBe(404);
+  expect((await post("/api/recurring/999/resume")).status).toBe(404);
+});
+
+test("recurring: deleting the rule keeps the history of what it sent", async () => {
+  const created = await createRule();
+  const rec = getRecurring(db, created.id)!;
+  fireRecurring(db, rec, { sendAt: rec.nextRunAt, nextRunAt: rec.nextRunAt! + 86400 });
+  expect((await del(`/api/recurring/${created.id}`)).status).toBe(204);
+  expect(await (await get("/api/recurring")).json()).toEqual({ recurring: [] });
+  expect(await (await get("/api/messages")).json()).toMatchObject({ messages: [{ text: "Daily", recurringId: null }] });
+});
+
+test("recurring: resuming a rule with no chats is refused", async () => {
+  const created = await createRule();
+  db.prepare("DELETE FROM recurring_message_targets").run();
+  await post(`/api/recurring/${created.id}/pause`);
+  const r = await post(`/api/recurring/${created.id}/resume`);
+  expect(r.status).toBe(409);
 });

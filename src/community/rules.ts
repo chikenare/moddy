@@ -9,8 +9,8 @@ export function createRulesHandler(deps: { db: Db; now?: () => number }): Compos
   const composer = new Composer<Context>();
 
   composer.chatType(["group", "supergroup"]).command("rules", (ctx) => {
-    const rules = getChat(db, ctx.chat.id)?.rules;
-    if (rules && cooldown.take(String(ctx.chat.id))) replyInBackground(ctx, rules);
+    const chat = getChat(db, ctx.chat.id);
+    if (chat?.rules && cooldown.take(String(ctx.chat.id))) replyInBackground(ctx, chat.rules, chat.rulesEntities);
   });
 
   return composer;
