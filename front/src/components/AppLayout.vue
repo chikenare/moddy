@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Moon, ShieldCheck, Sun } from '@lucide/vue'
+import { Moon, Sun } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger,
 } from '@/components/ui/sidebar'
+import BotLogo from '@/components/BotLogo.vue'
 import AppNav, { nav } from '@/components/AppNav.vue'
 import { theme, toggleTheme } from '@/lib/theme'
 import { useChatsStore } from '@/stores/chats'
@@ -21,9 +22,7 @@ const isDark = computed(() => theme.value === 'dark')
     <Sidebar>
       <SidebarHeader class="px-3 py-4">
         <div class="flex items-center gap-2.5 px-1">
-          <div class="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <ShieldCheck class="size-4" />
-          </div>
+          <BotLogo class="size-8 shrink-0" />
           <div class="leading-tight">
             <div class="text-sm font-semibold">Moderation</div>
             <div class="text-xs text-muted-foreground">Telegram groups</div>
