@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -84,6 +85,10 @@ async function toggle(value: boolean) {
         <Switch id="autoRepliesEnabled" :model-value="enabled" @update:model-value="toggle" />
       </CardContent>
     </Card>
+
+    <Alert v-if="!enabled && store.autoReplies.length" variant="destructive">
+      <AlertDescription>Auto replies are off, so the bot will not answer these. Turn the switch on above.</AlertDescription>
+    </Alert>
 
     <form class="space-y-2" @submit.prevent="submit">
       <Input v-model="triggers" placeholder="Trigger words, separated by commas: premium, vip" aria-label="Trigger words" />

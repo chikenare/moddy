@@ -13,7 +13,10 @@ const editor = useEditor({
   editorProps: { attributes: { class: 'rich-text text-sm break-words' } },
 })
 
-watch(() => props.message, (message) => editor.value?.commands.setContent(docFor(message), { emitUpdate: false }))
+// Parents pass a fresh object on every render; only a change of content may reset the editor (it clears text selection).
+watch(() => JSON.stringify([props.message.text, props.message.entities]), () => {
+  editor.value?.commands.setContent(docFor(props.message), { emitUpdate: false })
+})
 </script>
 
 <template>

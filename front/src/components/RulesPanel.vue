@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import RichTextEditor from '@/components/RichTextEditor.vue'
@@ -42,10 +42,16 @@ function trimmed(): FormattedMessage {
 async function save() {
   busy.value = true
   sentKey = keyOf({ text: trimmed().text, entities: trimmed().entities })
+  const typed = draft.value
   try {
     await store.update({ rules: draft.value.text, rulesEntities: draft.value.entities })
     toast.success('Rules saved')
   } catch (e) {
+    // The store reverts the chat; that must not rewind what the owner typed.
+    draft.value = typed
+    sentKey = keyOf(saved())
+    await nextTick()
+    sentKey = null
     toast.error(e instanceof Error ? e.message : 'Could not save the rules')
   } finally {
     busy.value = false

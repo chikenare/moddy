@@ -17,7 +17,7 @@ import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api, type FormattedMessage, type RecurringMessage, type ScheduledMessage, type TargetStatus } from '@/lib/api'
 import { EMPTY_MESSAGE } from '@/lib/formatting'
-import { buildCron, DEFAULT_REPEAT, describeRepeat, parseCron, type RepeatForm, type RepeatKind, WEEKDAY_NAMES } from '@/lib/schedule'
+import { buildCron, DEFAULT_REPEAT, describeRepeat, HOUR_STEPS, parseCron, type RepeatForm, type RepeatKind, WEEKDAY_NAMES } from '@/lib/schedule'
 import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
 
@@ -30,7 +30,12 @@ const PREVIEW_SHOWN = 3
 const chats = useChatsStore()
 const store = useMessagesStore()
 
-const available = computed(() => chats.chats.filter((c) => c.botStatus !== 'left' && c.botStatus !== 'kicked'))
+// Anyone can add the bot to a group, so only chats the owner switched something on in count as "active".
+const isActive = (c: { moderationEnabled: boolean; autoRepliesEnabled: boolean }) => c.moderationEnabled || c.autoRepliesEnabled
+const available = computed(() =>
+  chats.chats.filter((c) => c.botStatus !== 'left' && c.botStatus !== 'kicked')
+    .sort((a, b) => Number(isActive(b)) - Number(isActive(a))))
+const activeIds = computed(() => available.value.filter(isActive).map((c) => c.id))
 const message = ref<FormattedMessage>(EMPTY_MESSAGE)
 const selected = ref<number[]>([])
 const mode = ref<Mode>('now')
@@ -62,8 +67,9 @@ const repeatKinds: { value: RepeatKind; label: string }[] = [
 const toggleChat = (id: number, on: boolean) => {
   selected.value = on ? [...selected.value, id] : selected.value.filter((x) => x !== id)
 }
-const allSelected = computed(() => available.value.length > 0 && selected.value.length === available.value.length)
-const toggleAll = () => { selected.value = allSelected.value ? [] : available.value.map((c) => c.id) }
+const allSelected = computed(() =>
+  activeIds.value.length > 0 && activeIds.value.every((id) => selected.value.includes(id)))
+const toggleAll = () => { selected.value = allSelected.value ? [] : [...activeIds.value] }
 const toggleWeekday = (day: number) => {
   const days = repeat.value.weekdays
   repeat.value = { ...repeat.value, weekdays: days.includes(day) ? days.filter((d) => d !== day) : [...days, day] }
@@ -81,7 +87,7 @@ const repeatValid = computed(() => {
   if (!/^\d{2}:\d{2}$/.test(r.time) && r.kind !== 'hours') return false
   if (r.kind === 'weekdays') return r.weekdays.length > 0
   if (r.kind === 'monthday') return Number.isInteger(r.dayOfMonth) && r.dayOfMonth >= 1 && r.dayOfMonth <= 31
-  if (r.kind === 'hours') return Number.isInteger(r.everyHours) && r.everyHours >= 1 && r.everyHours <= 23
+  if (r.kind === 'hours') return HOUR_STEPS.includes(r.everyHours)
   return true
 })
 const ready = computed(() =>
@@ -235,8 +241,8 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
           <div class="space-y-2">
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-medium">Send to</span>
-              <Button v-if="available.length > 1" type="button" variant="ghost" size="sm" @click="toggleAll">
-                {{ allSelected ? 'Clear' : 'Select all' }}
+              <Button v-if="activeIds.length" type="button" variant="ghost" size="sm" @click="toggleAll">
+                {{ allSelected ? 'Clear' : 'Select active' }}
               </Button>
             </div>
             <p v-if="!available.length" class="text-sm text-muted-foreground">No chats yet.</p>
@@ -247,6 +253,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
               />
               <ChatAvatar :chat="c" class="size-6 text-[0.65rem]" />
               <Label :for="`chat-${c.id}`" class="min-w-0 break-words font-normal">{{ c.title }}</Label>
+              <Badge :variant="isActive(c) ? 'default' : 'outline'" class="ml-auto shrink-0">{{ isActive(c) ? 'On' : 'Off' }}</Badge>
             </div>
           </div>
 
@@ -283,8 +290,13 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
                   <Input id="repeat-day" :model-value="repeat.dayOfMonth" type="number" min="1" max="31" class="w-24" @update:model-value="(v) => setRepeat({ dayOfMonth: Number(v) })" />
                 </div>
                 <div v-if="repeat.kind === 'hours'" class="space-y-1">
-                  <Label for="repeat-hours">Every (hours)</Label>
-                  <Input id="repeat-hours" :model-value="repeat.everyHours" type="number" min="1" max="23" class="w-24" @update:model-value="(v) => setRepeat({ everyHours: Number(v) })" />
+                  <Label>Every</Label>
+                  <Select :model-value="String(repeat.everyHours)" @update:model-value="(v) => setRepeat({ everyHours: Number(v) })">
+                    <SelectTrigger class="w-32" aria-label="Hours between sends"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="h in HOUR_STEPS" :key="h" :value="String(h)">{{ h === 1 ? '1 hour' : `${h} hours` }}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -294,7 +306,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
                   :variant="repeat.weekdays.includes(day) ? 'default' : 'outline'" :aria-pressed="repeat.weekdays.includes(day)" @click="toggleWeekday(day)"
                 >{{ name }}</Button>
               </div>
-              <p v-if="repeat.kind === 'hours'" class="text-xs text-muted-foreground">Counted from midnight, so 5 hours means 00:00, 05:00, 10:00, 15:00 and 20:00.</p>
+              <p v-if="repeat.kind === 'hours'" class="text-xs text-muted-foreground">On the hour, counted from midnight: every 6 hours means 00:00, 06:00, 12:00 and 18:00.</p>
 
               <div v-if="repeat.kind === 'custom'" class="space-y-1">
                 <Label for="repeat-cron">Cron expression</Label>

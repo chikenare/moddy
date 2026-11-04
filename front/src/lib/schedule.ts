@@ -11,6 +11,9 @@ export interface RepeatForm {
 
 export const DEFAULT_REPEAT: RepeatForm = { kind: 'daily', time: '09:00', weekdays: [1], dayOfMonth: 1, everyHours: 6, custom: '' }
 
+// Only divisors of 24 repeat evenly: every 23 hours would send at 23:00 and again at 00:00.
+export const HOUR_STEPS = [1, 2, 3, 4, 6, 8, 12]
+
 const splitTime = (time: string): [number, number] => {
   const [h, m] = time.split(':').map(Number)
   return [Number.isFinite(h) ? h! : 0, Number.isFinite(m) ? m! : 0]
@@ -22,7 +25,7 @@ export function buildCron(form: RepeatForm): string {
     case 'daily': return `${m} ${h} * * *`
     case 'weekdays': return `${m} ${h} * * ${[...form.weekdays].sort((a, b) => a - b).join(',')}`
     case 'monthday': return `${m} ${h} ${form.dayOfMonth} * *`
-    case 'hours': return `${m} ${form.everyHours === 1 ? '*' : `*/${form.everyHours}`} * * *`
+    case 'hours': return `0 ${form.everyHours === 1 ? '*' : `*/${form.everyHours}`} * * *`
     case 'custom': return form.custom.trim()
   }
 }
@@ -47,11 +50,11 @@ export function parseCron(cron: string): RepeatForm {
     }
     return custom
   }
-  if (dom === '*' && dow === '*') {
-    const time = `00:${pad(Number(min))}`
+  if (dom === '*' && dow === '*' && min === '0') {
+    const time = '00:00'
     if (hour === '*') return { ...DEFAULT_REPEAT, kind: 'hours', time, everyHours: 1 }
     const every = /^\*\/(\d+)$/.exec(hour)
-    if (every && Number(every[1]) >= 1 && Number(every[1]) <= 23) return { ...DEFAULT_REPEAT, kind: 'hours', time, everyHours: Number(every[1]) }
+    if (every && HOUR_STEPS.includes(Number(every[1]))) return { ...DEFAULT_REPEAT, kind: 'hours', time, everyHours: Number(every[1]) }
   }
   return custom
 }
@@ -64,7 +67,7 @@ export function describeRepeat(cron: string): string {
     case 'daily': return `Every day at ${f.time}`
     case 'weekdays': return `Every ${f.weekdays.map((d) => WEEKDAY_NAMES[d]).join(', ')} at ${f.time}`
     case 'monthday': return `Day ${f.dayOfMonth} of every month at ${f.time}`
-    case 'hours': return `Every ${f.everyHours === 1 ? 'hour' : `${f.everyHours} hours`} at minute ${f.time.slice(3)}`
+    case 'hours': return `Every ${f.everyHours === 1 ? 'hour' : `${f.everyHours} hours`}, on the hour`
     case 'custom': return `Custom schedule: ${f.custom}`
   }
 }
