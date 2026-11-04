@@ -2,6 +2,7 @@ name: telegram-bot
 
 services:
   bot:
+    image: registry.delirio.org/chiken/telegram-bot:${IMAGE_TAG:-latest}
     build:
       context: .
       target: prod
@@ -11,6 +12,7 @@ services:
     restart: unless-stopped
 
   bot-front:
+    image: registry.delirio.org/chiken/telegram-bot-front:${IMAGE_TAG:-latest}
     build:
       context: ./front
       target: prod
