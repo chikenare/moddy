@@ -10,5 +10,13 @@ services:
       - data:/app/data
     restart: unless-stopped
 
+  bot-front:
+    build:
+      context: ./front
+      target: prod
+    depends_on: [bot]
+    restart: unless-stopped
+    ports: ["127.0.0.1:8088:80"]
+
 volumes:
   data:
