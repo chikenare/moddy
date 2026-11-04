@@ -4,7 +4,7 @@ Fecha: 2026-11-04. Estado: pendiente de aprobación.
 
 ## Por qué
 
-El bot (grammY, TypeScript, long polling, sin base de datos) hoy solo vende planes con Telegram Stars. Su dueño lo va a integrar en sus grupos y quiere que el spam desaparezca sin moderar a mano, y poder ajustar todo desde una interfaz web, no con comandos de Telegram.
+El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con Telegram Stars usando `playhubplus-api`. Esa parte se quita: las suscripciones volverán después con un backend propio. Su dueño lo va a integrar en sus grupos y quiere que el spam desaparezca sin moderar a mano, y poder ajustar todo desde una interfaz web, no con comandos de Telegram.
 
 ## Objetivos
 
@@ -26,12 +26,12 @@ El bot (grammY, TypeScript, long polling, sin base de datos) hoy solo vende plan
 - Modo Bot-to-Bot de BotFather (ver "Filtro de bots").
 - Lista de usuarios de confianza que no sean admins.
 - Acceso al panel por VPN o dominio público: llega junto con el login.
-- Quitar la API externa de planes (`api.playhub-plus.com`) y rediseñar las suscripciones. El dueño lo dejó para después; el flujo actual de planes y pagos no cambia.
+- Suscripciones y pagos con el backend propio: el dueño los deja para después.
 
 ## Anti-objetivos: esto sería un fracaso aunque funcione
 
 - Banear a un miembro legítimo sin forma de deshacerlo.
-- Que la moderación retrase o rompa los pagos (`pre_checkout_query` debe responderse en menos de 10 s).
+- Que una oleada de spam detenga el procesamiento de los demás updates del bot.
 - Que el panel sin login quede alcanzable desde internet.
 - Moderar grupos ajenos o guardar sus mensajes: el bot es público y cualquiera puede agregarlo a su grupo.
 - Banear por coincidencias parciales: `computadora` contiene `puta`, y `año` sin tilde sería `ano`.
@@ -52,6 +52,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) hoy solo vende plan
 - Todo se ejecuta con Docker.
 - En desarrollo el panel se abre en `http://bot.localhost`, por el Traefik que ya está corriendo y solo por HTTP.
 - El código deja de llamarse PlayHub+. El dueño renombra la carpeta después.
+- Se quita la suscripción basada en `playhubplus-api`.
 
 ## Decisiones del diseñador (el dueño puede cambiarlas)
 
@@ -67,6 +68,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) hoy solo vende plan
 | Conducta de `APP_ENV` (ver abajo) | El dueño pidió que difiera; la diferencia concreta la propone este diseño |
 | Historial con retención de 90 días y texto truncado a 1000 caracteres; los bans vigentes se conservan sin texto | Permite auditar sin guardar mensajes para siempre, y un ban antiguo sigue pudiéndose deshacer desde el panel |
 | Acceso al panel en producción solo por túnel SSH | Sin login, cualquier otra vía expone un panel que puede banear |
+| Se quita todo el flujo de compra (`/planes`, `/terms`, `/paysupport`, `/refund`), no solo la llamada a la API. El proyecto `playhubplus-api` no se modifica | Sin esa API no hay planes que vender. Sigue recuperable desde git |
 | Nombre neutro `telegram-bot` para paquete y proyecto de Docker | El dueño quitó la marca sin indicar otro nombre; textos del bot sin marca |
 
 ## Comportamiento del detector
@@ -92,7 +94,7 @@ El bot debe ser admin del grupo con `can_delete_messages` y `can_restrict_member
 4. Solo si un filtro se activa, consulta `getChatMember` para comprobar la exención. Los mensajes limpios no generan llamadas a la API.
 5. Borra, banea y registra el evento.
 
-**Los pasos 4 y 5 no deben bloquear la cola de updates.** `bot.start()` procesa los updates en secuencia, así que una oleada de spam o una espera por error 429 retrasaría los pagos. Las acciones se encolan por chat, respetando `retry_after`, y el middleware retorna. Las consultas a Telegram al registrar un chat tampoco bloquean la cola.
+**Los pasos 4 y 5 no deben bloquear la cola de updates.** `bot.start()` procesa los updates en secuencia, así que una oleada de spam o una espera por error 429 retrasaría todos los demás updates. Las acciones se encolan por chat, respetando `retry_after`, y el middleware retorna. Las consultas a Telegram al registrar un chat tampoco bloquean la cola.
 
 ### Filtros
 
@@ -258,7 +260,7 @@ Pruebas automatizadas sobre la lógica pura y la API con SQLite en memoria, sin 
 Prueba manual en el grupo de prueba real, con los contenedores levantados:
 
 1. El grupo aparece apagado en `http://bot.localhost` después de escribir un mensaje, y se enciende desde ahí.
-2. Cada filtro actúa, y el flujo de `/planes` y pago sigue funcionando.
+2. Cada filtro actúa.
 3. Con `APP_ENV=production` y una segunda cuenta: ban real y desbaneo desde el panel.
 
 ## A criterio de quien lo construya

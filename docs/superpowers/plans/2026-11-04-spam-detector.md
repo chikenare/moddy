@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Moderar los grupos del dueño (enlaces, palabras, flood, bots) con configuración por grupo editable desde un panel web, sin afectar el flujo de planes y pagos.
+**Goal:** Moderar los grupos del dueño (enlaces, palabras, flood, bots) con configuración por grupo editable desde un panel web, y quitar la suscripción basada en `playhubplus-api`.
 
 **Architecture:** La API (Hono) y la moderación (middleware de grammY) corren en el mismo proceso y comparten una conexión síncrona a SQLite. La detección es síncrona y las acciones contra Telegram van a una cola por chat que nunca bloquea los updates. El panel (Vue) es un paquete aparte que llega a la API por proxy.
 
@@ -18,11 +18,11 @@
 - Historial: 90 días, texto truncado a 1000 caracteres; los bans reales vigentes se conservan sin texto.
 - Nunca banear sin confirmar antes que el remitente no es admin (en `production`).
 - Desbanear siempre con `only_if_banned: true`. Ban sin `until_date`.
-- La moderación se registra antes que cualquier otro handler y nunca bloquea la cola de updates (`pre_checkout_query` debe responderse en menos de 10 s).
+- La moderación se registra antes que cualquier otro handler y nunca bloquea la cola de updates.
 - Panel: desarrollo en `http://bot.localhost`, solo HTTP por Traefik. Producción en `127.0.0.1:8088`. La API no publica puertos.
 - Hosts aceptados por la API: `bot.localhost`, `localhost`, `127.0.0.1`, `[::1]`, en cualquier puerto.
 - Sin `v-html` y sin enlaces clicables para el texto del spam.
-- Textos visibles en español. Código sin la marca PlayHub. La URL `api.playhub-plus.com` y el flujo de planes y pagos no se tocan.
+- Textos visibles en español. Código sin la marca PlayHub ni referencias a `playhubplus-api`. Ese proyecto no se modifica.
 - Nombres: proyecto `telegram-bot`, servicios `bot` y `bot-front`.
 - `git add` siempre por nombre de archivo; `.env` nunca se agrega. Cada commit termina con las líneas de atribución que indique la sesión.
 
@@ -63,6 +63,49 @@ front/                         panel
 
 ---
 
+### Task 0: Quitar la suscripción basada en playhubplus-api
+
+**Files:**
+- Delete: `src/handlers/plans.ts`, `src/handlers/payments.ts`, `src/services/plans.ts`, `src/services/orders.ts`, `src/utils/format.ts`
+- Modify: `src/index.ts`, `src/config.ts`, `.env.example`
+
+**Interfaces:**
+- Produces: `config.botToken` como único valor de `config`.
+
+- [ ] **Step 1: Borrar los cinco archivos**
+
+Run: `git rm src/handlers/plans.ts src/handlers/payments.ts src/services/plans.ts src/services/orders.ts src/utils/format.ts`
+
+- [ ] **Step 2: Reducir `src/index.ts`**
+
+Quitar los imports y los `bot.use` de `plansHandler` y `paymentsHandler`. Textos exactos:
+
+- `/start`: `` `¡Hola, ${ctx.from?.first_name ?? ""}! 👋 Soy un bot de moderación de grupos.` ``
+- `/help`: `"Comandos disponibles:\n/help - Esta ayuda"`
+- `setMyCommands`: solo `{ command: "help", description: "Ver ayuda" }`
+
+- [ ] **Step 3: Reducir la configuración**
+
+`src/config.ts`: dejar `required` y `botToken`. `.env.example`: dejar solo `BOT_TOKEN=tu_token_de_botfather`.
+
+- [ ] **Step 4: Verificar**
+
+```bash
+grep -rnIiE 'play ?hub|public-plans|planes|stars|apiBaseUrl' src .env.example || echo LIMPIO
+docker compose run --rm bot pnpm typecheck
+docker compose down
+```
+Expected: `LIMPIO` y sin errores de tipos.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/index.ts src/config.ts .env.example
+git commit -m "refactor: quitar la suscripción basada en playhubplus-api"
+```
+
+---
+
 ### Task 1: Base del proyecto, configuración y base de datos
 
 **Files:**
@@ -73,20 +116,7 @@ front/                         panel
 **Interfaces:**
 - Produces: `type AppEnv = "development" | "production"`; `parseAppEnv(value: string | undefined): AppEnv`; `type Db = Database.Database`; `openDatabase(path: string): Db`; `config.appEnv`, `config.apiPort`, `config.databasePath`.
 
-- [ ] **Step 1: Detener el stack actual antes de cambiar el nombre del proyecto**
-
-`tsx watch` recargaría código a medio hacer contra Telegram, y al exigir `APP_ENV` entraría en un bucle de reinicios.
-
-Run: `docker compose down`
-Expected: el contenedor `playhubplus_bot-bot-1` se elimina; los volúmenes se conservan.
-
-- [ ] **Step 2: Commit base del código existente**
-
-```bash
-git add .dockerignore .env.example .gitignore Dockerfile compose.prod.yml compose.yml package.json pnpm-lock.yaml pnpm-workspace.yaml src tsconfig.json
-git status --short   # .env no debe aparecer
-git commit -m "chore: estado inicial del bot"
-```
+Los pasos 1 y 2 (detener el stack y commit base) ya se hicieron al preparar la rama; el bot sigue detenido hasta la Tarea 8.
 
 - [ ] **Step 3: Infraestructura**
 
@@ -1113,10 +1143,10 @@ docker compose run --rm bot pnpm typecheck
 ```
 Expected: todas las pruebas pasan; `http://bot.localhost` funciona. `down -v` solo afecta a `telegram-bot-prodtest`.
 
-- [ ] **Step 5: Comprobar que los pagos siguen funcionando**
+- [ ] **Step 5: Comprobar los comandos que quedan**
 
-Pedir al dueño, en privado con el bot: `/planes`, elegir un plan y llegar a la factura. Luego `/help` y `/terms`.
-Expected: mismo comportamiento que antes, sin la marca en los textos.
+Pedir al dueño, en privado con el bot: `/start` y `/help`.
+Expected: responden con los textos de la Tarea 0.
 
 - [ ] **Step 6: Prueba del dueño con una segunda cuenta (ban real)**
 
