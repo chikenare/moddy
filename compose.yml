@@ -12,6 +12,23 @@ services:
       - data:/app/data
     restart: unless-stopped
 
+  bot-front:
+    build:
+      context: ./front
+      target: dev
+    volumes:
+      - ./front:/app
+      - front_node_modules:/app/node_modules
+    depends_on:
+      - bot
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bot-front.rule=Host(`bot.localhost`)"
+      - "traefik.http.routers.bot-front.entrypoints=web"
+      - "traefik.http.routers.bot-front.service=bot-front"
+      - "traefik.http.services.bot-front.loadbalancer.server.port=5173"
+
 networks:
   default:
     name: traefik
@@ -19,4 +36,5 @@ networks:
 
 volumes:
   node_modules:
+  front_node_modules:
   data:
