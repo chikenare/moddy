@@ -1,0 +1,15 @@
+export const DEFAULT_WORDS: readonly string[] = [
+  "hijo de puta",
+  "hijueputa",
+  "malparido",
+  "puta",
+  "mierda",
+  "pendejo",
+  "gilipollas",
+  "comemierda",
+  "gana dinero rapido",
+  "dinero facil",
+  "inversion garantizada",
+  "duplica tu dinero",
+  "criptomonedas gratis",
+];
