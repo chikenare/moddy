@@ -39,12 +39,30 @@ beforeEach(() => {
   insertChat(db, { id: CHAT, type: "supergroup", title: "Grupo", username: null }, []);
   insertChat(db, { id: CHANNEL, type: "channel", title: "Canal", username: null }, []);
   telegram = { leaveChat: vi.fn().mockResolvedValue(true), unbanChatMember: vi.fn().mockResolvedValue(true), unbanChatSenderChat: vi.fn().mockResolvedValue(true) };
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development" });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot" });
 });
 
-test("health devuelve estado y entorno", async () => {
+test("health devuelve estado, entorno y usuario del bot", async () => {
   const r = await get("/api/health");
-  expect(await r.json()).toEqual({ status: "ok", appEnv: "development" });
+  expect(await r.json()).toEqual({ status: "ok", appEnv: "development", botUsername: "mi_bot" });
+});
+
+test("el aviso se puede encender y personalizar; se recorta el texto", async () => {
+  const r = await patch("/api/chats/-100", { noticeEnabled: true, noticeTemplate: "  Bye {user}  " });
+  expect(r.status).toBe(200);
+  expect(await r.json()).toMatchObject({ noticeEnabled: true, noticeTemplate: "Bye {user}" });
+});
+
+test.each(["   ", "x".repeat(501)])("una plantilla de aviso inválida da 400 legible", async (noticeTemplate) => {
+  const r = await patch("/api/chats/-100", { noticeTemplate });
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error: "Notice must be between 1 and 500 characters" });
+});
+
+test("health devuelve botUsername null si el bot aún no ha iniciado", async () => {
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null });
+  const r = await get("/api/health");
+  expect(await r.json()).toEqual({ status: "ok", appEnv: "development", botUsername: null });
 });
 
 test.each(["bot.localhost", "localhost:9000", "127.0.0.1:8088", "[::1]:5173"])("acepta Host %s", async (host) => {
@@ -94,12 +112,12 @@ test.each([
   expect(json.error.length).toBeGreaterThan(0);
 });
 test.each([
-  [{ floodCount: 1 }, "El número de mensajes debe estar entre 2 y 50"],
-  [{ floodCount: 51 }, "El número de mensajes debe estar entre 2 y 50"],
-  [{ floodSeconds: 0 }, "Los segundos deben estar entre 1 y 3600"],
-  [{ floodSeconds: 3601 }, "Los segundos deben estar entre 1 y 3600"],
-  [{ linkFilterAction: "kick" }, "Valor no válido"],
-  [{ moderationEnabled: "si" }, "Valor no válido"],
+  [{ floodCount: 1 }, "Message count must be between 2 and 50"],
+  [{ floodCount: 51 }, "Message count must be between 2 and 50"],
+  [{ floodSeconds: 0 }, "Seconds must be between 1 and 3600"],
+  [{ floodSeconds: 3601 }, "Seconds must be between 1 and 3600"],
+  [{ linkFilterAction: "kick" }, "Invalid value"],
+  [{ moderationEnabled: "si" }, "Invalid value"],
 ])("PATCH %j da el mensaje legible %s", async (body, message) => {
   const r = await patch("/api/chats/-100", body);
   expect(await r.json()).toEqual({ error: message });
@@ -145,7 +163,7 @@ test("palabras: normaliza, duplicada no falla, vacía da 400, borrar por query",
 test.each(["xxx", "a", "  A ", "ab".repeat(51)])("palabra %j fuera de 2 a 100 caracteres da 400 con mensaje", async (word) => {
   const r = await post("/api/chats/-100/words", { word });
   expect(r.status).toBe(400);
-  expect(await r.json()).toEqual({ error: "La palabra debe tener entre 2 y 100 caracteres" });
+  expect(await r.json()).toEqual({ error: "Word must be between 2 and 100 characters" });
   expect(listWords(db, CHAT)).toEqual([]);
 });
 test("subrutas de un chat desconocido dan 404", async () => {
@@ -224,7 +242,7 @@ test("si Telegram falla al desbanear da 502 y no marca", async () => {
   expect(r.status).toBe(502);
   expect(await r.json()).toEqual({ error: expect.any(String) });
   expect(getEvent(db, CHAT, e.id)!.unbannedAt).toBeNull();
-  expect(err).toHaveBeenCalledWith(expect.stringContaining("desbanear"), expect.any(Error));
+  expect(err).toHaveBeenCalledWith(expect.stringContaining("Could not unban"), expect.any(Error));
   err.mockRestore();
 });
 
@@ -252,7 +270,7 @@ test("si el bot ya no estaba (400/403) también borra; otro error da 502 y conse
   expect((await del("/api/chats/-300")).status).toBe(502);
   expect((await get("/api/chats/-300")).status).toBe(200);
   expect(err).toHaveBeenCalledTimes(2);
-  expect(err).toHaveBeenCalledWith(expect.stringContaining("salir"), expect.any(Error));
+  expect(err).toHaveBeenCalledWith(expect.stringContaining("Could not leave"), expect.any(Error));
   err.mockRestore();
 });
 

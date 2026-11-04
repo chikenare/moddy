@@ -11,7 +11,7 @@ function hostname(host: string): string {
 export const hostOriginGuard: MiddlewareHandler = async (c, next) => {
   const host = c.req.header("host");
   if (!host || !ALLOWED_HOSTS.has(hostname(host))) {
-    return c.json({ error: "Host no permitido" }, 403);
+    return c.json({ error: "Host not allowed" }, 403);
   }
   const method = c.req.method;
   if (method !== "GET" && method !== "HEAD") {
@@ -20,8 +20,8 @@ export const hostOriginGuard: MiddlewareHandler = async (c, next) => {
       let originHost: string | null = null;
       try {
         originHost = new URL(origin).host.toLowerCase();
-      } catch { /* origen inválido */ }
-      if (originHost !== host.toLowerCase()) return c.json({ error: "Origen no permitido" }, 403);
+      } catch { /* invalid origin */ }
+      if (originHost !== host.toLowerCase()) return c.json({ error: "Origin not allowed" }, 403);
     }
   }
   await next();

@@ -126,7 +126,7 @@
   }
 }
 
-/* shadcn-vue (reka) emite data-state y data-orientation, no los atributos booleanos de radix */
+/* shadcn-vue (reka) emits data-state and data-orientation, not radix's boolean attributes */
 @custom-variant data-checked (&[data-state="checked"]);
 @custom-variant data-unchecked (&[data-state="unchecked"]);
 @custom-variant data-active (&[data-state="active"]);

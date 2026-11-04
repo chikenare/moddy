@@ -15,7 +15,7 @@ const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
 
 const filterLabels: Record<FilterName, string> = {
-  link: 'Enlaces', word: 'Palabras', flood: 'Flood', bot: 'Bots',
+  link: 'Links', word: 'Words', flood: 'Flood', bot: 'Bots',
 }
 
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
@@ -25,9 +25,9 @@ const isActiveBan = (e: EventRecord) => e.banOk === true && !e.dryRun && e.unban
 
 function outcome(e: EventRecord) {
   const parts: string[] = []
-  if (e.deleteOk) parts.push('Borrado')
-  if (e.banOk) parts.push(e.unbannedAt !== null ? 'Baneado (deshecho)' : 'Baneado')
-  return parts.join(' y ') || 'Sin efecto'
+  if (e.deleteOk) parts.push('Deleted')
+  if (e.banOk) parts.push(e.unbannedAt !== null ? 'Banned (undone)' : 'Banned')
+  return parts.join(' and ') || 'No effect'
 }
 
 const target = ref<EventRecord | null>(null)
@@ -42,10 +42,10 @@ async function confirmUnban() {
   busy.value = true
   try {
     await store.unban(target.value.id)
-    toast.success('Usuario desbaneado')
+    toast.success('User unbanned')
     dialogOpen.value = false
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo desbanear')
+    toast.error(e instanceof Error ? e.message : 'Could not unban')
   } finally {
     busy.value = false
   }
@@ -56,7 +56,7 @@ async function more() {
   try {
     await store.loadMoreEvents()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo cargar más')
+    toast.error(e instanceof Error ? e.message : 'Could not load more')
   } finally {
     loadingMore.value = false
   }
@@ -65,16 +65,16 @@ async function more() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="!store.events.length" class="text-sm text-muted-foreground">Todavía no hay eventos</p>
+    <p v-if="!store.events.length" class="text-sm text-muted-foreground">No events yet</p>
     <div v-else class="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Remitente</TableHead>
-            <TableHead>Filtro</TableHead>
-            <TableHead>Coincidencia</TableHead>
-            <TableHead>Resultado</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Sender</TableHead>
+            <TableHead>Filter</TableHead>
+            <TableHead>Match</TableHead>
+            <TableHead>Result</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -90,32 +90,32 @@ async function more() {
             <TableCell class="max-w-48 whitespace-normal">
               <div class="flex flex-wrap items-center gap-1">
                 <span>{{ outcome(e) }}</span>
-                <Badge v-if="e.dryRun" variant="outline">Simulado</Badge>
+                <Badge v-if="e.dryRun" variant="outline">Simulated</Badge>
               </div>
               <div v-if="e.error" class="mt-1 break-words text-xs text-destructive">{{ e.error }}</div>
             </TableCell>
             <TableCell>
-              <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Desbanear</Button>
+              <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Unban</Button>
             </TableCell>
           </TableRow>
         </TableBody>
       </Table>
     </div>
     <Button v-if="store.nextBefore !== null" variant="outline" :disabled="loadingMore" @click="more">
-      Cargar más
+      Load more
     </Button>
 
     <AlertDialog v-model:open="dialogOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>¿Desbanear a {{ target?.senderName }}?</AlertDialogTitle>
+          <AlertDialogTitle>Unban {{ target?.senderName }}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Podrá volver a entrar, pero debe hacerlo por su cuenta: el bot no lo vuelve a agregar al grupo.
+            They can rejoin, but must do it themselves: the bot won't add them back to the group.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="busy">Cancelar</AlertDialogCancel>
-          <AlertDialogAction :disabled="busy" @click.prevent="confirmUnban">Desbanear</AlertDialogAction>
+          <AlertDialogCancel :disabled="busy">Cancel</AlertDialogCancel>
+          <AlertDialogAction :disabled="busy" @click.prevent="confirmUnban">Unban</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

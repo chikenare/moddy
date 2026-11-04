@@ -22,7 +22,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 - Captcha de entrada, listas globales de spammers, análisis con IA, antigüedad de la cuenta.
 - Tratar `@menciones` como enlaces: son parte de la conversación normal.
 - Evasiones avanzadas de palabras (`p.u.t.a`, caracteres cirílicos parecidos).
-- Avisos en el grupo o a los admins al banear: el bot actúa en silencio y el panel es el registro.
+- Avisos privados a los admins al banear: el panel es el registro.
 - Modo Bot-to-Bot de BotFather (ver "Filtro de bots").
 - Lista de usuarios de confianza que no sean admins.
 - Acceso al panel por VPN o dominio público: llega junto con el login.
@@ -52,6 +52,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 - Todo se ejecuta con Docker.
 - En desarrollo el panel se abre en `http://bot.localhost`, por el Traefik que ya está corriendo y solo por HTTP.
 - El código deja de llamarse PlayHub+. El dueño renombra la carpeta después.
+- Todos los textos del bot, la API y el panel van en inglés. Las traducciones llegarán después.
 - Se quita la suscripción basada en `playhubplus-api`.
 
 ## Decisiones del diseñador (el dueño puede cambiarlas)
@@ -158,6 +159,7 @@ Si `getChatMember` falla, no se actúa y se registra el error. Sin confirmar que
 - Desbanear: `unbanChatMember` **siempre con `only_if_banned: true`** (sin ese parámetro, Telegram expulsa al miembro si sigue en el grupo) o `unbanChatSenderChat`. El usuario no regresa solo; debe volver a entrar.
 - No se confía en `revoke_messages` para limpiar mensajes. El borrado se hace de forma explícita.
 - Si el borrado o el ban fallan, el evento guarda el error y el proceso sigue.
+- Aviso opcional por grupo, apagado por defecto: una plantilla con `{user}`, `{action}` y `{reason}`, de hasta 500 caracteres. Se publica en silencio solo si el bot borró o baneó, como máximo uno cada 10 segundos por chat y sin reintentos. Nunca revela la palabra que coincidió. Si el nombre del remitente parece un enlace o una mención, se muestra su ID, para que el bot no repita spam.
 
 ### Canales
 
@@ -211,9 +213,9 @@ Límites de flood: entre 2 y 50 mensajes, entre 1 y 3600 segundos.
 
 ## Panel (`front/`)
 
-Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en español. Paquete independiente del bot, con su propio lockfile y contexto de Docker. Llama a la API con la ruta relativa `/api`.
+Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. Paquete independiente del bot, con su propio lockfile y contexto de Docker. Llama a la API con la ruta relativa `/api`.
 
-- **Lista de chats**: nombre, tipo, estado (encendido, apagado o inactivo), aviso si faltan permisos y "Salir y olvidar" con confirmación.
+- **Lista de chats**: nombre, tipo, estado (encendido, apagado o inactivo), aviso si faltan permisos y "Salir y olvidar" con confirmación. El botón "Agregar grupo" abre el enlace de Telegram `t.me/<bot>?startgroup&admin=delete_messages+restrict_members`, porque un bot no puede unirse a un grupo por sí mismo; el usuario elige el grupo en Telegram. La lista se recarga al volver a la pestaña.
 - **Detalle de un grupo**, con cuatro secciones:
   - **Filtros**: interruptor general; por filtro, activación y acción; números del flood.
   - **Palabras**: agregar y quitar.

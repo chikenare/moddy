@@ -202,6 +202,6 @@ test("si la escritura del refresco falla, se registra y no hay rechazo sin manej
   await flush();
   await flush();
   process.off("unhandledRejection", onUnhandled);
-  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("No se pudo guardar"), expect.anything());
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Could not save"), expect.anything());
   expect(unhandled).toEqual([]);
 });

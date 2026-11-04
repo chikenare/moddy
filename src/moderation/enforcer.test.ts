@@ -7,14 +7,16 @@ import type { AppEnv } from "../env.js";
 import { type EnforcerApi, type Violation, createEnforcer } from "./enforcer.js";
 
 let db: Db;
+let clock = 0;
 beforeEach(() => {
+  clock = 1_000_000;
   db = openDatabase(":memory:");
   for (const id of [1, 2]) insertChat(db, { id, type: "group", title: "A", username: null }, []);
 });
 
 const viol = (o: Partial<Violation> = {}): Violation => ({
   chatId: 1, sender: { type: "user", id: 10, name: "Ana" }, filter: "link", matched: "x.com", text: "hola",
-  action: "delete_ban", messageIds: [7], adminCheckUserId: 10, ...o,
+  action: "delete_ban", messageIds: [7], adminCheckUserId: 10, noticeTemplate: null, ...o,
 });
 
 function setup(appEnv: AppEnv = "production", over: Partial<Record<keyof EnforcerApi, unknown>> = {}) {
@@ -24,16 +26,130 @@ function setup(appEnv: AppEnv = "production", over: Partial<Record<keyof Enforce
     deleteMessages: vi.fn(async () => true),
     banChatMember: vi.fn(async () => true),
     banChatSenderChat: vi.fn(async () => true),
+    sendMessage: vi.fn(async () => ({ message_id: 1 })),
     ...over,
   };
   const sleep = vi.fn(async () => {});
-  const e = createEnforcer({ api: api as unknown as EnforcerApi, db, appEnv, sleep });
+  const e = createEnforcer({ api: api as unknown as EnforcerApi, db, appEnv, sleep, now: () => clock });
   return { api, sleep, e };
 }
 const events = (chat = 1) => listEvents(db, chat, { limit: 10 });
 const tooMany = () => new GrammyError("x", { ok: false, error_code: 429, description: "Too Many Requests", parameters: { retry_after: 3 } }, "deleteMessages", {});
 
 const serverError = () => new GrammyError("x", { ok: false, error_code: 500, description: "Internal", parameters: {} }, "deleteMessages", {});
+
+const NOTICE = "User {user} {action}: {reason}.";
+const sentText = (api: { sendMessage: unknown }) => (api.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0]![1];
+
+test("aviso: tras banear se publica en silencio y sin vista previa", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(api.sendMessage).toHaveBeenCalledWith(1, "User Ana banned: unauthorized link.", {
+    disable_notification: true,
+    link_preview_options: { is_disabled: true },
+  });
+});
+
+test("aviso: nunca revela la palabra que coincidió", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol({ filter: "word", matched: "secreta", noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(sentText(api)).toBe("User Ana banned: banned word.");
+});
+
+test("aviso: solo borrar dice advertido", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol({ action: "delete", noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(sentText(api)).toBe("User Ana warned: unauthorized link.");
+});
+
+test("aviso: en development el ban se presenta como simulado", async () => {
+  const { api, e } = setup("development");
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(sentText(api)).toBe("User Ana banned (simulated): unauthorized link.");
+});
+
+test("aviso: si el ban falla pero se borró, no dice baneado", async () => {
+  const { api, e } = setup("production", { banChatMember: vi.fn(async () => { throw serverError(); }) });
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(sentText(api)).toBe("User Ana warned: unauthorized link.");
+});
+
+test("aviso: sin plantilla no se envía nada", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol());
+  await e.drain();
+  expect(api.sendMessage).not.toHaveBeenCalled();
+});
+
+test("aviso: un admin exento no genera aviso", async () => {
+  const { api, e } = setup("production", { getChatMember: vi.fn(async () => ({ status: "administrator" })) });
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(api.sendMessage).not.toHaveBeenCalled();
+});
+
+test("aviso: si falla la comprobación de admin no se envía", async () => {
+  const { api, e } = setup("production", { getChatMember: vi.fn(async () => { throw serverError(); }) });
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(api.sendMessage).not.toHaveBeenCalled();
+});
+
+test("aviso: el canal vinculado no genera aviso", async () => {
+  const { api, e } = setup("production", { getChat: vi.fn(async () => ({ id: 1, type: "supergroup", title: "A", linked_chat_id: -5 })) });
+  e.enqueue(viol({ sender: { type: "chat", id: -5, name: "Canal" }, adminCheckUserId: null, noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(api.sendMessage).not.toHaveBeenCalled();
+});
+
+test("aviso: si no se pudo borrar ni banear no se envía", async () => {
+  const { api, e } = setup("production", {
+    deleteMessages: vi.fn(async () => { throw serverError(); }),
+    banChatMember: vi.fn(async () => { throw serverError(); }),
+  });
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  await e.drain();
+  expect(api.sendMessage).not.toHaveBeenCalled();
+});
+
+test("aviso: como máximo uno cada 10 s por chat; las acciones siguen", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  e.enqueue(viol({ noticeTemplate: NOTICE, messageIds: [8] }));
+  e.enqueue(viol({ chatId: 2, noticeTemplate: NOTICE, messageIds: [9] }));
+  await e.drain();
+  expect(api.sendMessage).toHaveBeenCalledTimes(2);
+  expect(api.deleteMessages).toHaveBeenCalledWith(1, [8]);
+  expect(events()).toHaveLength(2);
+  clock += 9_999;
+  e.enqueue(viol({ noticeTemplate: NOTICE, messageIds: [10] }));
+  await e.drain();
+  expect(api.sendMessage).toHaveBeenCalledTimes(2);
+  clock += 1;
+  e.enqueue(viol({ noticeTemplate: NOTICE, messageIds: [11] }));
+  await e.drain();
+  expect(api.sendMessage).toHaveBeenCalledTimes(3);
+});
+
+test("aviso: si falla el envío no se reintenta, se registra y la cola sigue", async () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { api, sleep, e } = setup("production", { sendMessage: vi.fn(async () => { throw tooMany(); }) });
+  e.enqueue(viol({ noticeTemplate: NOTICE }));
+  e.enqueue(viol({ messageIds: [8] }));
+  await e.drain();
+  expect(api.sendMessage).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
+  expect(spy).toHaveBeenCalled();
+  expect(events()).toHaveLength(2);
+  expect(events()[1]).toMatchObject({ deleteOk: true, banOk: true, error: null });
+  expect(api.deleteMessages).toHaveBeenCalledWith(1, [8]);
+});
 
 test("production: miembro normal se borra, se banea sin until_date y se registra", async () => {
   const { api, e } = setup();

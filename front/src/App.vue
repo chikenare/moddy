@@ -13,7 +13,7 @@ onMounted(() => store.load())
       v-if="store.appEnv === 'development'"
       class="sticky top-0 z-40 border-b bg-amber-100 px-4 py-2 text-center text-sm text-amber-900"
     >
-      Modo desarrollo: los bans son simulados, pero los mensajes sí se borran y los admins no están exentos.
+      Development mode: bans are simulated, but messages are really deleted and admins are not exempt.
     </div>
     <main class="mx-auto max-w-3xl px-4 py-8">
       <RouterView :key="$route.fullPath" />

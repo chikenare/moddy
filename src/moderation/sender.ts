@@ -9,7 +9,7 @@ export function senderOf(message: Message): Sender {
     return { type: "chat", id: c.id, name: c.title ?? (c.username ? `@${c.username}` : String(c.id)) };
   }
   const u = message.from;
-  if (!u) return { type: "user", id: 0, name: "desconocido" };
+  if (!u) return { type: "user", id: 0, name: "unknown" };
   const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || (u.username ? `@${u.username}` : String(u.id));
   return { type: "user", id: u.id, name };
 }

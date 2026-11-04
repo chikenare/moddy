@@ -24,17 +24,17 @@ export function createRegistrationHandler(deps: { db: Db }): Composer<Context> {
         update.username = "username" in info ? info.username ?? null : null;
       }
     } catch (error) {
-      console.error(`No se pudo consultar getChat del chat ${id}`, error);
+      console.error(`Could not fetch getChat for chat ${id}`, error);
     }
     try {
       Object.assign(update, memberInfo(await ctx.api.getChatMember(id, ctx.me.id)));
     } catch (error) {
-      console.error(`No se pudo consultar getChatMember del chat ${id}`, error);
+      console.error(`Could not fetch getChatMember for chat ${id}`, error);
     }
     try {
       if (Object.keys(update).length) updateChatInfo(db, id, update);
     } catch (error) {
-      console.error(`No se pudo guardar la información del chat ${id}`, error);
+      console.error(`Could not save info for chat ${id}`, error);
     }
   }
 

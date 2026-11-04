@@ -20,7 +20,7 @@ async function add() {
     await store.addWord(draft.value)
     draft.value = ''
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo agregar la palabra')
+    toast.error(e instanceof Error ? e.message : 'Could not add the word')
   } finally {
     busy.value = false
   }
@@ -30,7 +30,7 @@ async function remove(w: string) {
   try {
     await store.removeWord(w)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo quitar la palabra')
+    toast.error(e instanceof Error ? e.message : 'Could not remove the word')
   }
 }
 </script>
@@ -38,17 +38,17 @@ async function remove(w: string) {
 <template>
   <div class="space-y-4">
     <form class="flex gap-2" @submit.prevent="add">
-      <Input v-model="draft" placeholder="Palabra prohibida" aria-label="Palabra prohibida" />
-      <Button type="submit" :disabled="busy || !draft.trim()">Agregar</Button>
+      <Input v-model="draft" placeholder="Banned word" aria-label="Banned word" />
+      <Button type="submit" :disabled="busy || !draft.trim()">Add</Button>
     </form>
-    <p v-if="!store.words.length" class="text-sm text-muted-foreground">No hay palabras prohibidas</p>
+    <p v-if="!store.words.length" class="text-sm text-muted-foreground">No banned words</p>
     <ul v-else class="flex flex-wrap gap-2">
       <li v-for="w in store.words" :key="w">
         <Badge variant="secondary" class="gap-1 py-1 pr-1 text-sm">
           <span class="break-all">{{ w }}</span>
           <button
             type="button" class="rounded-full p-0.5 hover:bg-background/60"
-            :aria-label="`Quitar ${w}`" @click="remove(w)"
+            :aria-label="`Remove ${w}`" @click="remove(w)"
           >
             <X class="size-3.5" />
           </button>

@@ -27,7 +27,8 @@ export function createModerationHandler(deps: {
     const sender = senderOf(message);
     const adminCheckUserId = sender.type === "user" ? sender.id : null;
     const text = message.text ?? message.caption ?? null;
-    const base = { chatId, text, messageIds: [message.message_id] };
+    const noticeTemplate = chat.noticeEnabled ? chat.noticeTemplate : null;
+    const base = { chatId, text, messageIds: [message.message_id], noticeTemplate };
 
     if (chat.botFilterEnabled && ctx.message?.new_chat_members && message.from) {
       const bots = message.new_chat_members?.filter((m) => m.is_bot && m.id !== ctx.me.id) ?? [];
@@ -71,8 +72,8 @@ export function createModerationHandler(deps: {
         );
         if (ids) {
           enforcer.enqueue({
-            chatId, sender, filter: "flood", text, messageIds: ids, adminCheckUserId,
-            matched: `${ids.length} mensajes en ${chat.floodSeconds} s`, action: chat.floodFilterAction,
+            chatId, sender, filter: "flood", text, messageIds: ids, adminCheckUserId, noticeTemplate,
+            matched: `${ids.length} messages in ${chat.floodSeconds} s`, action: chat.floodFilterAction,
           });
           return;
         }

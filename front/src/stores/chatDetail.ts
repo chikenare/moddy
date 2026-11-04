@@ -25,7 +25,7 @@ export function useChatDetailStore(id: number) {
         events.value = ev.events;
         nextBefore.value = ev.nextBefore;
       } catch (e) {
-        error.value = e instanceof Error ? e.message : "Error desconocido";
+        error.value = e instanceof Error ? e.message : "Unknown error";
       } finally {
         loading.value = false;
       }

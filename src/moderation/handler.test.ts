@@ -38,6 +38,29 @@ const run = async (...updates: Parameters<typeof t.bot.handleUpdate>[0][]) => {
   for (const u of updates) await t.bot.handleUpdate(u);
   await enforcer.drain();
 };
+test("aviso: apagado por defecto", async () => {
+  await run(groupMessage(LINK));
+  expect(t.callsOf("sendMessage")).toHaveLength(0);
+});
+
+test("aviso: encendido publica la plantilla del grupo", async () => {
+  updateChatSettings(db, -100, { noticeEnabled: true });
+  await run(groupMessage(LINK));
+  expect(t.callsOf("sendMessage")[0]!.payload).toMatchObject({ chat_id: -100, text: "User Ana banned: unauthorized link." });
+});
+
+test("aviso: también en flood y con plantilla propia", async () => {
+  updateChatSettings(db, -100, { noticeEnabled: true, noticeTemplate: "Bye {user}: {reason}" });
+  await run(...[1, 2, 3, 4, 5].map(() => groupMessage({ text: "hola" })));
+  expect(t.callsOf("sendMessage")[0]!.payload.text).toBe("Bye Ana: repeated messages");
+});
+
+test("aviso: también al banear un bot agregado por un no admin", async () => {
+  updateChatSettings(db, -100, { noticeEnabled: true, noticeTemplate: "Out {user}: {reason}" });
+  await run(groupMessage({ new_chat_members: [{ id: 50, is_bot: true, first_name: "SpamBot" }] }));
+  expect(t.callsOf("sendMessage")[0]!.payload.text).toBe("Out SpamBot: unauthorized bot");
+});
+
 const expectNoAction = () => {
   expect(t.callsOf("deleteMessages")).toHaveLength(0);
   expect(t.callsOf("banChatMember")).toHaveLength(0);

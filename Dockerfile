@@ -6,11 +6,11 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack install
 
-# --- Desarrollo (hot reload con tsx) ---
+# --- Development (hot reload with tsx) ---
 FROM base AS dev
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY . .
-# pnpm no reenvía SIGTERM; tsx sí
+# pnpm does not forward SIGTERM; tsx does
 CMD ["node_modules/.bin/tsx", "watch", "src/index.ts"]
 
 # --- Build ---
@@ -19,7 +19,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-# --- Producción ---
+# --- Production ---
 FROM base AS prod
 ENV NODE_ENV=production
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod

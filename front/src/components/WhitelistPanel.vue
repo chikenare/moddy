@@ -22,7 +22,7 @@ async function add() {
     await store.addEntry(draft.value)
     draft.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'No se pudo agregar la entrada'
+    error.value = e instanceof Error ? e.message : 'Could not add the entry'
   } finally {
     busy.value = false
   }
@@ -42,7 +42,7 @@ async function addSuggestion(entry: string) {
   try {
     await store.addEntry(entry)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo agregar la entrada')
+    toast.error(e instanceof Error ? e.message : 'Could not add the entry')
   }
 }
 
@@ -50,7 +50,7 @@ async function remove(entry: string) {
   try {
     await store.removeEntry(entry)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'No se pudo quitar la entrada')
+    toast.error(e instanceof Error ? e.message : 'Could not remove the entry')
   }
 }
 </script>
@@ -58,21 +58,21 @@ async function remove(entry: string) {
 <template>
   <div class="space-y-4">
     <p class="text-sm text-muted-foreground">
-      Los enlaces a estos dominios o canales se permiten. Ejemplos: example.com, t.me/micanal
+      Links to these domains or channels are allowed. Examples: example.com, t.me/mychannel
     </p>
     <form class="space-y-2" @submit.prevent="add">
       <div class="flex gap-2">
         <Input
-          v-model="draft" placeholder="example.com o t.me/micanal" aria-label="Enlace o dominio permitido"
+          v-model="draft" placeholder="example.com or t.me/mychannel" aria-label="Allowed link or domain"
           :aria-invalid="error ? true : undefined" @input="error = null"
         />
-        <Button type="submit" :disabled="busy || !draft.trim()">Agregar</Button>
+        <Button type="submit" :disabled="busy || !draft.trim()">Add</Button>
       </div>
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
     </form>
     <div v-if="suggestions.length" class="space-y-2">
       <p class="text-sm text-muted-foreground">
-        Los enlaces a mensajes de este grupo también cuentan. Para permitirlos, agrega:
+        Links to messages in this group count too. To allow them, add:
       </p>
       <div class="flex flex-wrap gap-2">
         <Button v-for="s in suggestions" :key="s" type="button" variant="outline" size="sm" @click="addSuggestion(s)">
@@ -80,14 +80,14 @@ async function remove(entry: string) {
         </Button>
       </div>
     </div>
-    <p v-if="!store.whitelist.length" class="text-sm text-muted-foreground">La lista blanca está vacía</p>
+    <p v-if="!store.whitelist.length" class="text-sm text-muted-foreground">The whitelist is empty</p>
     <ul v-else class="flex flex-wrap gap-2">
       <li v-for="e in store.whitelist" :key="e">
         <Badge variant="secondary" class="gap-1 py-1 pr-1 text-sm">
           <span class="break-all">{{ e }}</span>
           <button
             type="button" class="rounded-full p-0.5 hover:bg-background/60"
-            :aria-label="`Quitar ${e}`" @click="remove(e)"
+            :aria-label="`Remove ${e}`" @click="remove(e)"
           >
             <X class="size-3.5" />
           </button>

@@ -12,9 +12,10 @@ export interface ChatRecord {
   floodFilterEnabled: boolean; floodFilterAction: FilterAction;
   floodCount: number; floodSeconds: number;
   botFilterEnabled: boolean;
+  noticeEnabled: boolean; noticeTemplate: string;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate">;
 
 export interface EventRecord {
   id: number; chatId: number; senderType: SenderType; senderId: number; senderName: string;
@@ -40,14 +41,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, "No se pudo conectar con el servidor");
+    throw new ApiError(0, "Could not connect to the server");
   }
   if (!res.ok) {
     let message = `Error ${res.status}`;
     try {
       const data = await res.json();
       if (typeof data?.error === "string") message = data.error;
-    } catch { /* cuerpo sin JSON */ }
+    } catch { /* non-JSON body */ }
     throw new ApiError(res.status, message);
   }
   if (res.status === 204) return undefined as T;
@@ -57,7 +58,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 const chat = (id: number) => `/chats/${id}`;
 
 export const api = {
-  health: () => request<{ status: string; appEnv: "development" | "production" }>("GET", "/health"),
+  health: () => request<{ status: string; appEnv: "development" | "production"; botUsername: string | null }>("GET", "/health"),
   listChats: () => request<ChatRecord[]>("GET", "/chats"),
   getChat: (id: number) => request<ChatRecord>("GET", chat(id)),
   updateChat: (id: number, patch: Partial<ChatSettings>) => request<ChatRecord>("PATCH", chat(id), patch),

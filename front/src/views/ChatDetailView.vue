@@ -24,7 +24,7 @@ onMounted(() => store.load())
       <ArrowLeft class="size-4" /> Chats
     </RouterLink>
 
-    <p v-if="store.loading && !chat" class="text-sm text-muted-foreground">Cargando...</p>
+    <p v-if="store.loading && !chat" class="text-sm text-muted-foreground">Loading...</p>
     <p v-else-if="store.error && !chat" class="text-sm text-destructive">{{ store.error }}</p>
 
     <template v-else-if="chat">
@@ -32,16 +32,16 @@ onMounted(() => store.load())
 
       <Alert v-if="chat.type === 'channel'">
         <AlertDescription>
-          En un canal solo publican admins. Para moderar los comentarios, agrega el bot a su grupo de discusión y configúralo allí
+          Only admins post in a channel. To moderate its comments, add the bot to its discussion group and configure it there.
         </AlertDescription>
       </Alert>
 
       <Tabs v-else default-value="filters" class="gap-4">
         <TabsList class="h-auto w-full flex-wrap">
-          <TabsTrigger value="filters">Filtros</TabsTrigger>
-          <TabsTrigger value="words">Palabras</TabsTrigger>
-          <TabsTrigger value="whitelist">Lista blanca</TabsTrigger>
-          <TabsTrigger value="history">Historial</TabsTrigger>
+          <TabsTrigger value="filters">Filters</TabsTrigger>
+          <TabsTrigger value="words">Words</TabsTrigger>
+          <TabsTrigger value="whitelist">Whitelist</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
         <TabsContent value="filters"><FiltersPanel :id="id" /></TabsContent>
         <TabsContent value="words"><WordsPanel :id="id" /></TabsContent>

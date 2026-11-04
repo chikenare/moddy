@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 
 export type Db = Database.Database;
 
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE chats (
     id INTEGER PRIMARY KEY, type TEXT NOT NULL, title TEXT NOT NULL, username TEXT,
@@ -36,6 +36,10 @@ const MIGRATIONS: string[] = [
     dry_run INTEGER NOT NULL, unbanned_at INTEGER, created_at INTEGER NOT NULL
   ) STRICT;
   CREATE INDEX moderation_events_chat ON moderation_events(chat_id, id DESC);
+  `,
+  `
+  ALTER TABLE chats ADD COLUMN notice_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE chats ADD COLUMN notice_template TEXT NOT NULL DEFAULT 'User {user} {action}: {reason}.';
   `,
 ];
 
