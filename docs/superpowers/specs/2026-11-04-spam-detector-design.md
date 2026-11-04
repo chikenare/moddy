@@ -88,7 +88,7 @@ El bot debe ser admin del grupo con `can_delete_messages` y `can_restrict_member
 
 ### Orden de ejecución
 
-1. El middleware de moderación se registra **antes** que todos los demás, incluidos `/start` y `/help`. Si fuera después, `/start https://spam.example` se saltaría el filtro, porque esos handlers no llaman a `next()`.
+1. El middleware de moderación se registra **antes** que todos los demás, incluidos `/start` y `/help`. Si fuera después, `/start https://spam.example` se saltaría el filtro, porque esos handlers no llaman a `next()`. `/start` y `/help` solo responden en chats privados.
 2. Procesa `message` y `edited_message` de grupos y supergrupos. Un mensaje inofensivo editado después para meter un enlace también se detecta. Si el chat está apagado o no hay infracción, llama a `next()`.
 3. Evalúa filtros de forma síncrona (SQLite y memoria), sin llamadas a Telegram.
 4. Solo si un filtro se activa, consulta `getChatMember` para comprobar la exención. Los mensajes limpios no generan llamadas a la API.
@@ -121,6 +121,8 @@ El bot debe ser admin del grupo con `can_delete_messages` y `can_restrict_member
 - Las repeticiones de 3 o más letras se reducen a una (`putaaaa` coincide con `puta`).
 - La misma normalización se aplica a la lista y al mensaje.
 - Se revisa `text` y `caption`.
+- Longitud mínima de una palabra: 2 caracteres, ya normalizada (`xxx` queda en `x` y se rechaza).
+- No se escanean las menciones (`mention`, `text_mention`) ni las URLs (`url`): sus rangos se sustituyen por espacios antes de buscar. `text_link` sí se escanea, porque su texto visible lo escribe el remitente.
 - La lista inicial debe ser conservadora porque banea a la primera: sin términos ambiguos.
 
 **Flood**
@@ -128,7 +130,7 @@ El bot debe ser admin del grupo con `can_delete_messages` y `can_restrict_member
 - Ventana deslizante en memoria por chat y remitente. Perderla al reiniciar es aceptable.
 - Usa `message.date`, no la hora de llegada. Si no, al arrancar con updates pendientes, mensajes de varias horas parecerían llegar juntos y provocarían bans falsos.
 - Similar: texto normalizado igual, o muy parecido si ambos son suficientemente largos. Multimedia: mismo `file_unique_id`.
-- Al activarse se borran todos los mensajes de la ventana con `deleteMessages`, no solo el último, y se limpia la ventana de ese remitente.
+- Al activarse se borran los mensajes similares de la ventana con `deleteMessages` (esto reemplaza a "todos" los de la ventana), no solo el último, y se limpia la ventana de ese remitente.
 - Los mensajes de servicio no cuentan.
 
 **Bots**
@@ -145,9 +147,9 @@ Nunca se actúa contra:
 - Remitentes con estado `creator` o `administrator`, comprobado en el momento y sin caché, para que un admin recién nombrado no sea baneado.
 - Admins anónimos: `sender_chat.id` igual al id del grupo.
 - Reenvíos automáticos del canal vinculado: `is_automatic_forward`.
-- Mensajes enviados como el canal vinculado: `sender_chat.id` igual a `linked_chat_id`.
+- Mensajes enviados como el canal vinculado: `sender_chat.id` igual a `linked_chat_id`, comprobado en vivo con `getChat` en el momento de actuar, igual que los admins y sin fiarse de la fila guardada (que puede estar desactualizada). Si coincide, no se actúa y se actualiza `linked_chat_id`.
 
-Si `getChatMember` falla, no se actúa y se registra el error. Sin confirmar que no es admin, no se banea.
+Si `getChatMember` falla, no se actúa y se registra el error. Sin confirmar que no es admin, no se banea. Igual con `getChat`: si falla al comprobar un canal, no se actúa y se registra el error.
 
 ### Acciones
 

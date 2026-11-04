@@ -1150,7 +1150,7 @@ Expected: responden con los textos de la Tarea 0.
 
 - [ ] **Step 6: Prueba del dueño con una segunda cuenta (ban real)**
 
-No se puede automatizar: requiere otra cuenta de Telegram. Es opcional antes de desplegar y va con `APP_ENV=production` en `.env` y `docker compose up -d --force-recreate bot`. Esa base es otra, así que el grupo vuelve a aparecer apagado y hay que encenderlo. La segunda cuenta envía un enlace: se borra, queda baneada y "Desbanear" la libera. Volver después a `APP_ENV=development`.
+No se puede automatizar: requiere otra cuenta de Telegram. Es obligatorio antes de encender la moderación en producción, no opcional. Va con `APP_ENV=production` en `.env` y `docker compose up -d --force-recreate bot`. Esa base es otra, así que el grupo vuelve a aparecer apagado y hay que encenderlo. La segunda cuenta envía un enlace: se borra, queda baneada y "Desbanear" la libera. Volver después a `APP_ENV=development`.
 
 - [ ] **Step 7: Commit**
 
