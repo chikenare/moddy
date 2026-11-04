@@ -259,6 +259,16 @@ Cambios de infraestructura:
 - `config.ts`: `APP_ENV` obligatorio y validado.
 - `index.ts`: cierre ordenado de bot, servidor HTTP y base de datos en `SIGINT`/`SIGTERM`.
 
+## Panel completo
+
+El dueño pidió un panel más completo. Valoró un modelo SaaS y lo descartó, así que sigue siendo para un solo dueño y sin login.
+
+- **Mensajes recurrentes:** expresión cron y zona horaria, con opciones simples en la interfaz. Mínimo 5 minutos entre envíos para que el bot no inunde un grupo. Cada ejecución crea un mensaje programado normal, y así reutiliza envío, historial y protección contra duplicados. Con el bot parado, las ejecuciones perdidas se reducen a una, que se descarta si lleva más de una hora de retraso.
+- **Formato de Telegram** en auto replies, mensajes y reglas, guardado como texto y entidades.
+- **Fotos de grupos:** por proxy en la API con caché de una hora, porque la URL de archivos de Telegram contiene el token del bot.
+- **Navegación lateral y modo oscuro.**
+- **Métricas:** contadores diarios por chat, sin guardar contenido, solo en chats con alguna función encendida.
+
 ## Cómo se prueba
 
 Pruebas automatizadas sobre la lógica pura y la API con SQLite en memoria, sin llamar a Telegram. Casos obligatorios:
