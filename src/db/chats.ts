@@ -12,9 +12,10 @@ export interface ChatRecord {
   floodCount: number; floodSeconds: number;
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
+  rules: string; autoRepliesEnabled: boolean;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "autoRepliesEnabled">;
 export type ChatInfo = Partial<Pick<ChatRecord, "title" | "username" | "botStatus" | "canDelete" | "canRestrict" | "linkedChatId" | "type">>;
 
 type Row = Record<string, number | string | null>;
@@ -29,10 +30,11 @@ const COLUMNS: Record<keyof ChatRecord, string> = {
   floodCount: "flood_count", floodSeconds: "flood_seconds",
   botFilterEnabled: "bot_filter_enabled",
   noticeEnabled: "notice_enabled", noticeTemplate: "notice_template",
+  rules: "rules", autoRepliesEnabled: "auto_replies_enabled",
   createdAt: "created_at", updatedAt: "updated_at",
 };
 
-const BOOLEANS = new Set<string>(["canDelete", "canRestrict", "moderationEnabled", "linkFilterEnabled", "wordFilterEnabled", "floodFilterEnabled", "botFilterEnabled", "noticeEnabled"]);
+const BOOLEANS = new Set<string>(["canDelete", "canRestrict", "moderationEnabled", "linkFilterEnabled", "wordFilterEnabled", "floodFilterEnabled", "botFilterEnabled", "noticeEnabled", "autoRepliesEnabled"]);
 
 function toRecord(row: Row): ChatRecord {
   const out: Record<string, unknown> = {};

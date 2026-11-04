@@ -13,9 +13,10 @@ export interface ChatRecord {
   floodCount: number; floodSeconds: number;
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
+  rules: string; autoRepliesEnabled: boolean;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "autoRepliesEnabled">;
 
 export interface EventRecord {
   id: number; chatId: number; senderType: SenderType; senderId: number; senderName: string;
@@ -23,6 +24,19 @@ export interface EventRecord {
   deleteOk: boolean | null; banOk: boolean | null; error: string | null;
   dryRun: boolean; unbannedAt: number | null; createdAt: number;
 }
+
+export interface StaffMember { userId: number; displayName: string; addedAt: number }
+export interface FormattedEntity {
+  type: "bold" | "italic" | "underline" | "strikethrough" | "spoiler" | "code" | "blockquote" | "text_link";
+  offset: number;
+  length: number;
+  url?: string;
+}
+export interface FormattedMessage { text: string; entities: FormattedEntity[] }
+export interface AutoReply { id: number; chatId: number; triggers: string[]; reply: string; entities: FormattedEntity[]; createdAt: number }
+export type TargetStatus = "pending" | "sending" | "sent" | "failed" | "missed" | "cancelled";
+export interface MessageTarget { chatId: number; title: string; status: TargetStatus; error: string | null; sentAt: number | null }
+export interface ScheduledMessage { id: number; text: string; sendAt: number; createdAt: number; targets: MessageTarget[] }
 
 export class ApiError extends Error {
   status: number;
@@ -72,4 +86,17 @@ export const api = {
   listEvents: (id: number, before?: number) =>
     request<{ events: EventRecord[]; nextBefore: number | null }>("GET", `${chat(id)}/events${before === undefined ? "" : `?before=${before}`}`),
   unban: (id: number, eventId: number) => request<EventRecord>("POST", `${chat(id)}/events/${eventId}/unban`),
+  listStaff: async (id: number) => (await request<{ staff: StaffMember[] }>("GET", `${chat(id)}/staff`)).staff,
+  addStaff: (id: number, user: string) => request<StaffMember>("POST", `${chat(id)}/staff`, { user }),
+  removeStaff: (id: number, userId: number) => request<void>("DELETE", `${chat(id)}/staff/${userId}`),
+  listAutoReplies: async (id: number) => (await request<{ autoReplies: AutoReply[] }>("GET", `${chat(id)}/auto-replies`)).autoReplies,
+  addAutoReply: (id: number, triggers: string[], message: FormattedMessage) =>
+    request<AutoReply>("POST", `${chat(id)}/auto-replies`, { triggers, reply: message.text, entities: message.entities }),
+  updateAutoReply: (id: number, replyId: number, triggers: string[], message: FormattedMessage) =>
+    request<AutoReply>("PUT", `${chat(id)}/auto-replies/${replyId}`, { triggers, reply: message.text, entities: message.entities }),
+  removeAutoReply: (id: number, replyId: number) => request<void>("DELETE", `${chat(id)}/auto-replies/${replyId}`),
+  listMessages: async () => (await request<{ messages: ScheduledMessage[] }>("GET", "/messages")).messages,
+  sendMessage: (text: string, chatIds: number[], sendAt: number | null) =>
+    request<ScheduledMessage>("POST", "/messages", { text, chatIds, sendAt }),
+  cancelMessage: (id: number) => request<ScheduledMessage>("POST", `/messages/${id}/cancel`),
 };

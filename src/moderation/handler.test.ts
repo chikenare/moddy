@@ -4,6 +4,7 @@ import { type Db, openDatabase } from "../db/connection.js";
 import { insertChat, updateChatInfo, updateChatSettings } from "../db/chats.js";
 import { listEvents } from "../db/events.js";
 import { addWhitelistEntry, addWord } from "../db/lists.js";
+import { addStaff, removeStaff } from "../db/staff.js";
 import { createTestBot } from "../test/harness.js";
 import { channelPost, editedGroupMessage, groupMessage } from "../test/updates.js";
 import { createEnforcer } from "./enforcer.js";
@@ -38,6 +39,39 @@ const run = async (...updates: Parameters<typeof t.bot.handleUpdate>[0][]) => {
   for (const u of updates) await t.bot.handleUpdate(u);
   await enforcer.drain();
 };
+test("staff is exempt from every filter and other members are not", async () => {
+  addStaff(db, -100, 10, "Ana");
+  addWord(db, -100, "spam");
+  await run(
+    groupMessage(LINK),
+    groupMessage({ text: "spam" }),
+    ...[1, 2, 3, 4, 5].map(() => groupMessage({ text: "hola" })),
+    groupMessage({ new_chat_members: [{ id: 50, is_bot: true, first_name: "SomeBot" }] }),
+  );
+  expectNoAction();
+  expect(t.callsOf("getChatMember")).toHaveLength(0);
+  await run(groupMessage({ ...LINK, from: { id: 11, is_bot: false, first_name: "Bea" } }));
+  expect(t.callsOf("banChatMember")).toHaveLength(1);
+});
+
+test("staff stays exempt in development, where admins are not", async () => {
+  const dev = createTestBot();
+  const devEnforcer = createEnforcer({ api: dev.bot.api, db, appEnv: "development" });
+  dev.bot.use(createModerationHandler({ db, enforcer: devEnforcer, flood: new FloodTracker() }));
+  addStaff(db, -100, 10, "Ana");
+  await dev.bot.handleUpdate(groupMessage(LINK));
+  await devEnforcer.drain();
+  expect(dev.callsOf("deleteMessages")).toHaveLength(0);
+});
+
+test("a staff member's messages do not count towards flood once removed", async () => {
+  addStaff(db, -100, 10, "Ana");
+  await run(...[1, 2, 3, 4].map(() => groupMessage({ text: "hola" })));
+  removeStaff(db, -100, 10);
+  await run(groupMessage({ text: "hola" }));
+  expect(t.callsOf("deleteMessages")).toHaveLength(0);
+});
+
 test("aviso: apagado por defecto", async () => {
   await run(groupMessage(LINK));
   expect(t.callsOf("sendMessage")).toHaveLength(0);

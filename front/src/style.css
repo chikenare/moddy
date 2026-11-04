@@ -126,6 +126,23 @@
   }
 }
 
+.rich-text p { min-height: 1.25rem; }
+.rich-text strong { font-weight: 700; }
+.rich-text em { font-style: italic; }
+.rich-text u { text-decoration: underline; }
+.rich-text s { text-decoration: line-through; }
+.rich-text a { color: var(--primary); text-decoration: underline; }
+.rich-text code { border-radius: 0.25rem; background: var(--muted); padding: 0.05rem 0.25rem; font-family: var(--font-mono, monospace); font-size: 0.875em; }
+.rich-text blockquote { border-left: 3px solid var(--border); padding-left: 0.75rem; }
+.rich-text .tg-spoiler { border-radius: 0.25rem; background: var(--muted); color: var(--muted-foreground); text-decoration: underline dotted; }
+.rich-text p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+
 /* shadcn-vue (reka) emits data-state and data-orientation, not radix's boolean attributes */
 @custom-variant data-checked (&[data-state="checked"]);
 @custom-variant data-unchecked (&[data-state="unchecked"]);

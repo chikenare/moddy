@@ -1,12 +1,14 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { api, type ChatRecord, type ChatSettings, type EventRecord } from "@/lib/api";
+import { api, type AutoReply, type ChatRecord, type ChatSettings, type EventRecord, type FormattedMessage, type StaffMember } from "@/lib/api";
 
 export function useChatDetailStore(id: number) {
   return defineStore(`chatDetail:${id}`, () => {
     const chat = ref<ChatRecord | null>(null);
     const words = ref<string[]>([]);
     const whitelist = ref<string[]>([]);
+    const staff = ref<StaffMember[]>([]);
+    const autoReplies = ref<AutoReply[]>([]);
     const events = ref<EventRecord[]>([]);
     const nextBefore = ref<number | null>(null);
     const loading = ref(false);
@@ -16,12 +18,14 @@ export function useChatDetailStore(id: number) {
       loading.value = true;
       error.value = null;
       try {
-        const [c, w, wl, ev] = await Promise.all([
-          api.getChat(id), api.listWords(id), api.listWhitelist(id), api.listEvents(id),
+        const [c, w, wl, ev, st, ar] = await Promise.all([
+          api.getChat(id), api.listWords(id), api.listWhitelist(id), api.listEvents(id), api.listStaff(id), api.listAutoReplies(id),
         ]);
         chat.value = c;
         words.value = w;
         whitelist.value = wl;
+        staff.value = st;
+        autoReplies.value = ar;
         events.value = ev.events;
         nextBefore.value = ev.nextBefore;
       } catch (e) {
@@ -66,6 +70,31 @@ export function useChatDetailStore(id: number) {
       whitelist.value = whitelist.value.filter((x) => x !== e);
     }
 
+    async function addStaff(user: string) {
+      const member = await api.addStaff(id, user);
+      staff.value = [...staff.value.filter((s) => s.userId !== member.userId), member]
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }
+
+    async function removeStaff(userId: number) {
+      await api.removeStaff(id, userId);
+      staff.value = staff.value.filter((s) => s.userId !== userId);
+    }
+
+    async function saveAutoReply(replyId: number | null, triggers: string[], message: FormattedMessage) {
+      if (replyId === null) {
+        autoReplies.value = [...autoReplies.value, await api.addAutoReply(id, triggers, message)];
+        return;
+      }
+      const updated = await api.updateAutoReply(id, replyId, triggers, message);
+      autoReplies.value = autoReplies.value.map((r) => (r.id === replyId ? updated : r));
+    }
+
+    async function removeAutoReply(replyId: number) {
+      await api.removeAutoReply(id, replyId);
+      autoReplies.value = autoReplies.value.filter((r) => r.id !== replyId);
+    }
+
     async function loadMoreEvents() {
       if (nextBefore.value === null) return;
       const page = await api.listEvents(id, nextBefore.value);
@@ -82,6 +111,6 @@ export function useChatDetailStore(id: number) {
       return updated;
     }
 
-    return { chat, words, whitelist, events, nextBefore, loading, error, load, update, addWord, removeWord, addEntry, removeEntry, loadMoreEvents, unban };
+    return { chat, words, whitelist, staff, autoReplies, events, nextBefore, loading, error, load, update, addWord, removeWord, addEntry, removeEntry, addStaff, removeStaff, saveAutoReply, removeAutoReply, loadMoreEvents, unban };
   })();
 }

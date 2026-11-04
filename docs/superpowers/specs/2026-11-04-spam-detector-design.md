@@ -24,7 +24,6 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 - Evasiones avanzadas de palabras (`p.u.t.a`, caracteres cirílicos parecidos).
 - Avisos privados a los admins al banear: el panel es el registro.
 - Modo Bot-to-Bot de BotFather (ver "Filtro de bots").
-- Lista de usuarios de confianza que no sean admins.
 - Acceso al panel por VPN o dominio público: llega junto con el login.
 - Suscripciones y pagos con el backend propio: el dueño los deja para después.
 
@@ -160,6 +159,22 @@ Si `getChatMember` falla, no se actúa y se registra el error. Sin confirmar que
 - No se confía en `revoke_messages` para limpiar mensajes. El borrado se hace de forma explícita.
 - Si el borrado o el ban fallan, el evento guarda el error y el proceso sigue.
 - Aviso opcional por grupo, apagado por defecto: una plantilla con `{user}`, `{action}` y `{reason}`, de hasta 500 caracteres. Se publica en silencio solo si el bot borró o baneó, como máximo uno cada 10 segundos por chat y sin reintentos. Nunca revela la palabra que coincidió. Si el nombre del remitente parece un enlace o una mención, se muestra su ID, para que el bot no repita spam.
+
+### Staff
+
+Lista por grupo de usuarios exentos de todos los filtros, también en desarrollo, sin ser admins. Se agregan por ID, comprobado contra Telegram, o por `@usuario`. Como Telegram no permite buscar un `@usuario`, el bot recuerda a quienes escriben en chats con moderación o auto replies encendidas; en chats apagados no guarda nada, y lo guardado se borra a los 90 días sin actividad.
+
+### Reglas
+
+Texto por grupo, hasta 4000 caracteres, editable en el panel. `/rules` lo publica en el grupo como máximo una vez por minuto; sin texto, el comando no responde. La moderación va antes.
+
+### Auto replies
+
+Lista por grupo de palabras y respuesta en texto con enlaces, apagada por defecto. La coincidencia es la de la blacklist, sin contar menciones ni URL. Cada respuesta sale como máximo una vez por minuto por grupo, y un mensaje produce una sola respuesta. No responde a ediciones, a reenvíos automáticos del canal ni a mensajes sancionados. Una palabra no puede estar en dos respuestas del mismo grupo.
+
+### Mensajes programados
+
+Desde el panel se envía un texto con enlaces a uno o varios chats, ahora o en una fecha, una sola vez. Se guardan en SQLite y sobreviven a un reinicio. Cada destino se marca como enviándose antes de la llamada: si el proceso se cae, queda como fallido en vez de enviarse dos veces. Un mensaje con más de una hora de retraso se marca como perdido y no se envía. Se conserva 90 días.
 
 ### Canales
 

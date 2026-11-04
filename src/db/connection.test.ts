@@ -18,7 +18,7 @@ test("en archivo usa WAL, crea la carpeta y reabrir no repite migraciones", () =
   openDatabase(path).close();
   const db = openDatabase(path);
   expect(db.pragma("journal_mode", { simple: true })).toBe("wal");
-  expect(db.pragma("user_version", { simple: true })).toBe(2);
+  expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
 });
 
 test("una base en la versión 1 sube a la 2 sin perder chats y con el aviso apagado", () => {

@@ -15,7 +15,11 @@ onMounted(() => store.load())
     >
       Development mode: bans are simulated, but messages are really deleted and admins are not exempt.
     </div>
-    <main class="mx-auto max-w-3xl px-4 py-8">
+    <nav class="mx-auto flex max-w-3xl gap-4 px-4 pt-6 text-sm">
+      <RouterLink to="/" class="text-muted-foreground hover:text-foreground" exact-active-class="font-medium text-foreground!">Chats</RouterLink>
+      <RouterLink to="/messages" class="text-muted-foreground hover:text-foreground" active-class="font-medium text-foreground!">Messages</RouterLink>
+    </nav>
+    <main class="mx-auto max-w-3xl px-4 py-6">
       <RouterView :key="$route.fullPath" />
     </main>
     <Toaster />

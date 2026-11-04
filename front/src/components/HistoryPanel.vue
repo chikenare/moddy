@@ -22,6 +22,17 @@ const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 
 const when = (ts: number) => fmt.format(new Date(ts * 1000))
 
 const isActiveBan = (e: EventRecord) => e.banOk === true && !e.dryRun && e.unbannedAt === null
+const canAddToStaff = (e: EventRecord) =>
+  e.senderType === 'user' && e.filter !== 'bot' && !store.staff.some((s) => s.userId === e.senderId)
+
+async function addToStaff(e: EventRecord) {
+  try {
+    await store.addStaff(String(e.senderId))
+    toast.success(`${e.senderName} added to staff`)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Could not add to staff')
+  }
+}
 
 function outcome(e: EventRecord) {
   const parts: string[] = []
@@ -95,7 +106,10 @@ async function more() {
               <div v-if="e.error" class="mt-1 break-words text-xs text-destructive">{{ e.error }}</div>
             </TableCell>
             <TableCell>
-              <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Unban</Button>
+              <div class="flex flex-col items-start gap-1">
+                <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Unban</Button>
+                <Button v-if="canAddToStaff(e)" variant="outline" size="sm" @click="addToStaff(e)">Add to staff</Button>
+              </div>
             </TableCell>
           </TableRow>
         </TableBody>

@@ -41,6 +41,40 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE chats ADD COLUMN notice_enabled INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE chats ADD COLUMN notice_template TEXT NOT NULL DEFAULT 'User {user} {action}: {reason}.';
   `,
+  `
+  ALTER TABLE chats ADD COLUMN rules TEXT NOT NULL DEFAULT '';
+  ALTER TABLE chats ADD COLUMN auto_replies_enabled INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE chat_staff (
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    user_id INTEGER NOT NULL, display_name TEXT NOT NULL, added_at INTEGER NOT NULL,
+    PRIMARY KEY (chat_id, user_id)
+  ) STRICT;
+  CREATE TABLE chat_seen_users (
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    user_id INTEGER NOT NULL, username TEXT, display_name TEXT NOT NULL, seen_at INTEGER NOT NULL,
+    PRIMARY KEY (chat_id, user_id)
+  ) STRICT;
+  CREATE INDEX chat_seen_users_username ON chat_seen_users(chat_id, username);
+  CREATE TABLE chat_auto_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    triggers TEXT NOT NULL, reply TEXT NOT NULL, created_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE scheduled_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL, send_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE scheduled_message_targets (
+    message_id INTEGER NOT NULL REFERENCES scheduled_messages(id) ON DELETE CASCADE,
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    status TEXT NOT NULL, error TEXT, sent_at INTEGER,
+    PRIMARY KEY (message_id, chat_id)
+  ) STRICT;
+  CREATE INDEX scheduled_message_targets_status ON scheduled_message_targets(status);
+  `,
+  `
+  ALTER TABLE chat_auto_replies ADD COLUMN entities TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDatabase(path: string): Db {

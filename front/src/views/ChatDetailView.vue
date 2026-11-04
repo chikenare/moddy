@@ -3,8 +3,11 @@ import { ArrowLeft } from '@lucide/vue'
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import AutoRepliesPanel from '@/components/AutoRepliesPanel.vue'
 import FiltersPanel from '@/components/FiltersPanel.vue'
 import HistoryPanel from '@/components/HistoryPanel.vue'
+import RulesPanel from '@/components/RulesPanel.vue'
+import StaffPanel from '@/components/StaffPanel.vue'
 import WhitelistPanel from '@/components/WhitelistPanel.vue'
 import WordsPanel from '@/components/WordsPanel.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -41,11 +44,17 @@ onMounted(() => store.load())
           <TabsTrigger value="filters">Filters</TabsTrigger>
           <TabsTrigger value="words">Words</TabsTrigger>
           <TabsTrigger value="whitelist">Whitelist</TabsTrigger>
+          <TabsTrigger value="staff">Staff</TabsTrigger>
+          <TabsTrigger value="rules">Rules</TabsTrigger>
+          <TabsTrigger value="auto-replies">Auto replies</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
         <TabsContent value="filters"><FiltersPanel :id="id" /></TabsContent>
         <TabsContent value="words"><WordsPanel :id="id" /></TabsContent>
         <TabsContent value="whitelist"><WhitelistPanel :id="id" /></TabsContent>
+        <TabsContent value="staff"><StaffPanel :id="id" /></TabsContent>
+        <TabsContent value="rules"><RulesPanel :id="id" /></TabsContent>
+        <TabsContent value="auto-replies"><AutoRepliesPanel :id="id" /></TabsContent>
         <TabsContent value="history"><HistoryPanel :id="id" /></TabsContent>
       </Tabs>
     </template>

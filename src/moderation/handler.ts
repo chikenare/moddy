@@ -3,6 +3,7 @@ import type { Message } from "grammy/types";
 import type { Db } from "../db/connection.js";
 import { getChat } from "../db/chats.js";
 import { listWhitelist, listWords } from "../db/lists.js";
+import { isStaff } from "../db/staff.js";
 import type { Violation } from "./enforcer.js";
 import { type FloodTracker, fingerprintOf } from "./flood.js";
 import { extractLinks, findUnauthorizedLink } from "./links.js";
@@ -25,6 +26,8 @@ export function createModerationHandler(deps: {
     if (isStructurallyExempt(message, chat)) return next();
 
     const sender = senderOf(message);
+    if (sender.type === "user" && isStaff(db, chatId, sender.id)) return next();
+
     const adminCheckUserId = sender.type === "user" ? sender.id : null;
     const text = message.text ?? message.caption ?? null;
     const noticeTemplate = chat.noticeEnabled ? chat.noticeTemplate : null;
