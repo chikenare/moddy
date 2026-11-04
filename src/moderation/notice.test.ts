@@ -30,9 +30,17 @@ test.each([
   "https://x.example",
   "@spam_channel",
   "win ｔ．ｍｅ",
+  "пример.рф",
+  "spam.укр",
+  "例子.中国",
+  "8.8.8.8",
   "   ",
 ])("a link-like or empty name falls back to the id: %j", (name) => {
   expect(safeName(sender(name))).toBe("42");
+});
+
+test.each(["Dr. Juan", "J.R."])("initials and titles stay as names: %j", (name) => {
+  expect(safeName(sender(name))).toBe(name);
 });
 
 test("cleans line breaks and control characters", () => {

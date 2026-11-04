@@ -23,8 +23,21 @@ test("a new message has one pending target per chat, with its title", () => {
 test("list shows the newest first, limited", () => {
   const a = createMessage(db, "A", [-1], 500);
   const b = createMessage(db, "B", [-1], 400);
+  db.prepare("UPDATE scheduled_message_targets SET status = 'sent'").run();
   expect(listMessages(db).map((m) => m.id)).toEqual([b.id, a.id]);
   expect(listMessages(db, 1)).toHaveLength(1);
+});
+
+test("an old pending message stays listed, first, however many newer finished ones exist", () => {
+  const old = createMessage(db, "Later", [-1], 9_999);
+  for (let i = 0; i < 150; i++) {
+    const m = createMessage(db, `Done ${i}`, [-1], 100 + i);
+    db.prepare("UPDATE scheduled_message_targets SET status = 'sent' WHERE message_id = ?").run(m.id);
+  }
+  const list = listMessages(db, 100);
+  expect(list).toHaveLength(101);
+  expect(list[0]!.id).toBe(old.id);
+  expect(list[1]!.text).toBe("Done 149");
 });
 
 test("cancel only touches targets still pending and reports how many", () => {

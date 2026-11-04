@@ -30,13 +30,16 @@ export function getMessage(db: Db, id: number): ScheduledMessage | undefined {
   return row && toRecord(db, row);
 }
 
+// Messages with pending targets always come first: they can still be sent or cancelled, however old they are.
 export function listMessages(db: Db, limit = 100): ScheduledMessage[] {
-  const rows = db.prepare(
-    `SELECT * FROM scheduled_messages m
-     WHERE EXISTS (SELECT 1 FROM scheduled_message_targets t WHERE t.message_id = m.id)
-     ORDER BY m.id DESC LIMIT ?`,
+  const hasTargets = "EXISTS (SELECT 1 FROM scheduled_message_targets t WHERE t.message_id = m.id";
+  const pending = db.prepare(
+    `SELECT * FROM scheduled_messages m WHERE ${hasTargets} AND t.status = 'pending') ORDER BY m.id DESC`,
+  ).all() as Row[];
+  const finished = db.prepare(
+    `SELECT * FROM scheduled_messages m WHERE ${hasTargets}) AND NOT ${hasTargets} AND t.status = 'pending') ORDER BY m.id DESC LIMIT ?`,
   ).all(limit) as Row[];
-  return rows.map((row) => toRecord(db, row));
+  return [...pending, ...finished].map((row) => toRecord(db, row));
 }
 
 export function createMessage(

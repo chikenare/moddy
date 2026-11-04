@@ -15,7 +15,7 @@ const REASONS: Record<FilterName, string> = {
   bot: "unauthorized bot",
 };
 
-const LINK_LIKE = /[@/]|\.[a-z]{2,}/i;
+const LINK_LIKE = /[@/]|\.\p{L}{2,}|\d\.\d/u;
 const MAX_NAME = 40;
 
 // Spammers use their display name as an ad: the bot must not repeat links in the group.
