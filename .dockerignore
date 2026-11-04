@@ -3,6 +3,7 @@ dist
 .env
 .git
 *.log
-front
+front/node_modules
+front/dist
 data
 docs

@@ -12,5 +12,6 @@ export const config = {
   botToken: required("BOT_TOKEN"),
   appEnv,
   apiPort: parsePort(process.env.API_PORT),
+  panelDir: process.env.PANEL_DIR || null,
   databasePath: process.env.DATABASE_PATH ?? `./data/${appEnv}.sqlite`,
 } as const;

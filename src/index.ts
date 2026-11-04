@@ -68,6 +68,7 @@ const api = createApi({
   botUsername: () => (bot.isInited() ? bot.botInfo.username : null),
   onMessageQueued: () => scheduler.kick(),
   fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
+  panelDir: config.panelDir,
 });
 const server = serve({ fetch: api.fetch, port: config.apiPort });
 

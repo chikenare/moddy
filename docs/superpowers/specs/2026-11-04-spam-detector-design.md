@@ -253,17 +253,17 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. P
 La API no publica ningún puerto en ningún entorno: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`.
 
 - **Desarrollo:** el servidor de Vite tampoco publica puertos. Se entra por Traefik en `http://bot.localhost`, solo HTTP, sin certificado. Los servicios viven en la red externa `traefik`, como los demás proyectos.
-- **Producción:** nginx con el build publica el puerto **únicamente en `127.0.0.1:8088`**, accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`). El 8080 lo ocupa el dashboard de Traefik.
-- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite y nginx reenvían el `Host` original del navegador.
+- **Producción:** una sola imagen y un solo contenedor. El propio bot sirve el panel ya compilado (`PANEL_DIR=/app/public`, con `index.html` como respaldo para las rutas del panel y caché inmutable para `/assets/`) y publica el puerto **únicamente en `127.0.0.1:8088`** (`8088:3000`), accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`). nginx ya no existe. El 8080 lo ocupa el dashboard de Traefik.
+- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite reenvía el `Host` original del navegador; en producción no hay proxy. Todas las respuestas llevan `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` y `Referrer-Policy: same-origin`.
 
 Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar al panel enviando ese `Host`. Se acepta en desarrollo, igual que los otros paneles de esa máquina, y se resuelve con el login. Ahora el panel también puede enviar mensajes a los grupos reales, de modo que quien llegue al panel por la red local puede publicar en ellos, no solo cambiar su configuración.
 
 Cambios de infraestructura:
 
-- `compose.yml` y `compose.prod.yml`: `name: telegram-bot`, para que renombrar la carpeta no deje huérfano el volumen de la base; servicio `bot-front`; volumen con nombre `data` en `/app/data`.
+- `compose.yml` y `compose.prod.yml`: `name: telegram-bot`, para que renombrar la carpeta no deje huérfano el volumen de la base; servicio `bot-front` solo en desarrollo; volumen con nombre `data` en `/app/data`.
 - `compose.yml`: red externa `traefik` y labels del panel (un solo router, entrypoint `web`).
-- `Dockerfile`: crear `/app/data` con dueño `node` antes de `USER node`, o la imagen de producción no podrá escribir la base.
-- `.dockerignore`: agregar `front`, `data`, `docs`. `.gitignore`: agregar `data/`.
+- `Dockerfile`: una etapa compila el panel desde `front/` y `prod` lo copia a `./public`; crear `/app/data` con dueño `node` antes de `USER node`, o la imagen de producción no podrá escribir la base.
+- `.dockerignore`: agregar `data`, `docs`, `front/node_modules` y `front/dist`. `.gitignore`: agregar `data/`.
 - `.env.example`: agregar `APP_ENV`, `API_PORT` y `DATABASE_PATH` (opcional).
 - `config.ts`: `APP_ENV` obligatorio y validado.
 - `index.ts`: cierre ordenado de bot, servidor HTTP y base de datos en `SIGINT`/`SIGTERM`.

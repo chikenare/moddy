@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { type Api, GrammyError } from "grammy";
 import { type Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -100,9 +103,9 @@ function describeIssue(issue: z.core.$ZodIssue): string {
 export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
-  fetchPhoto: PhotoFetcher;
+  fetchPhoto: PhotoFetcher; panelDir?: string | null;
 }): Hono {
-  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto } = deps;
+  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir } = deps;
   const app = new Hono();
   const api = new Hono();
 
@@ -407,7 +410,39 @@ export function createApi(deps: {
     return fail(c, 500, "Internal error");
   });
 
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Frame-Options", "DENY");
+    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Referrer-Policy", "same-origin");
+  });
+
   app.route("/api", api);
-  app.notFound((c) => c.json({ error: "Route not found" }, 404));
+
+  const isApi = (path: string) => path === "/api" || path.startsWith("/api/");
+  if (panelDir) {
+    const files = serveStatic({ root: panelDir });
+    app.use("*", async (c, next) => {
+      if (isApi(c.req.path)) return next();
+      let served = true;
+      const response = await files(c, async () => {
+        served = false;
+        await next();
+      });
+      if (!served || !response) return;
+      // Vite hashes everything under /assets/, so those never change; the rest must be revalidated.
+      response.headers.set("Cache-Control", c.req.path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache");
+      return response;
+    });
+    app.notFound((c) => {
+      const spaRoute = (c.req.method === "GET" || c.req.method === "HEAD") && !isApi(c.req.path) && !c.req.path.startsWith("/assets/");
+      if (!spaRoute) return c.json({ error: "Route not found" }, 404);
+      c.header("Cache-Control", "no-cache");
+      return c.html(readFileSync(join(panelDir, "index.html"), "utf8"));
+    });
+  } else {
+    app.notFound((c) => c.json({ error: "Route not found" }, 404));
+  }
   return app;
 }

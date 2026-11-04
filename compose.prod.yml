@@ -9,16 +9,8 @@ services:
     env_file: .env
     volumes:
       - data:/app/data
+    ports: ["127.0.0.1:8088:3000"]
     restart: unless-stopped
-
-  bot-front:
-    image: registry.delirio.org/chiken/telegram-bot-front:${IMAGE_TAG:-latest}
-    build:
-      context: ./front
-      target: prod
-    depends_on: [bot]
-    restart: unless-stopped
-    ports: ["127.0.0.1:8088:80"]
 
 volumes:
   data:

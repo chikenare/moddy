@@ -19,11 +19,25 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
+# --- Panel build ---
+FROM node:24-alpine AS panel
+WORKDIR /app
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+COPY front/package.json front/pnpm-lock.yaml front/pnpm-workspace.yaml ./
+RUN corepack install
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+COPY front/ ./
+RUN pnpm build
+
 # --- Production ---
 FROM base AS prod
 ENV NODE_ENV=production
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
+COPY --from=panel /app/dist ./public
+ENV PANEL_DIR=/app/public
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 CMD ["node", "dist/index.js"]
