@@ -1,0 +1,71 @@
+<script setup lang="ts">
+import { Moon, ShieldCheck, Sun } from '@lucide/vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
+  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger,
+} from '@/components/ui/sidebar'
+import AppNav, { nav } from '@/components/AppNav.vue'
+import { theme, toggleTheme } from '@/lib/theme'
+import { useChatsStore } from '@/stores/chats'
+
+const route = useRoute()
+const store = useChatsStore()
+const current = computed(() => nav.find((n) => n.match(route.path))?.label ?? '')
+const isDark = computed(() => theme.value === 'dark')
+</script>
+
+<template>
+  <SidebarProvider>
+    <Sidebar>
+      <SidebarHeader class="px-3 py-4">
+        <div class="flex items-center gap-2.5 px-1">
+          <div class="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+            <ShieldCheck class="size-4" />
+          </div>
+          <div class="leading-tight">
+            <div class="text-sm font-semibold">Moderation</div>
+            <div class="text-xs text-muted-foreground">Telegram groups</div>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <AppNav />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter class="p-3">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton @click="toggleTheme">
+              <Sun v-if="isDark" /><Moon v-else />
+              <span>{{ isDark ? 'Light mode' : 'Dark mode' }}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+
+    <SidebarInset class="min-w-0">
+      <div class="sticky top-0 z-30">
+        <div
+          v-if="store.appEnv === 'development'"
+          class="border-b border-amber-300 bg-amber-100 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-950 dark:text-amber-200"
+        >
+          Development mode: bans are simulated, but messages are really deleted and admins are not exempt.
+        </div>
+        <header class="flex h-12 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur md:px-5">
+          <SidebarTrigger />
+          <span class="text-sm font-medium">{{ current }}</span>
+        </header>
+      </div>
+      <main class="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 md:py-8">
+        <slot />
+      </main>
+    </SidebarInset>
+  </SidebarProvider>
+</template>

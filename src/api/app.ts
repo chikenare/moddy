@@ -16,6 +16,7 @@ import { normalizeWhitelistEntry } from "../moderation/links.js";
 import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
 import { hostOriginGuard } from "./guard.js";
+import type { PhotoFetcher } from "./photos.js";
 
 export type ApiTelegram = Pick<Api, "leaveChat" | "unbanChatMember" | "unbanChatSenderChat" | "getChatMember">;
 
@@ -98,8 +99,9 @@ function describeIssue(issue: z.core.$ZodIssue): string {
 export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
+  fetchPhoto: PhotoFetcher;
 }): Hono {
-  const { db, telegram, appEnv, botUsername, onMessageQueued } = deps;
+  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto } = deps;
   const app = new Hono();
   const api = new Hono();
 
@@ -216,6 +218,12 @@ export function createApi(deps: {
   });
 
   api.get(chatRoute, (c) => c.json(getChat(db, chatId(c))!));
+
+  api.get(`${chatRoute}/photo`, async (c) => {
+    const photo = await fetchPhoto(chatId(c));
+    if (!photo) return fail(c, 404, "This chat has no photo");
+    return c.body(photo as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" });
+  });
 
   api.patch(chatRoute, async (c) => {
     const body = await readBody(c, patchSchema);

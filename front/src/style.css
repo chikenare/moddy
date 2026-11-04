@@ -150,3 +150,13 @@
 @custom-variant data-open (&[data-state="open"]);
 @custom-variant data-closed (&[data-state="closed"]);
 @custom-variant data-horizontal (&[data-orientation="horizontal"]);
+
+/* Stable per-chat color for initials avatars; --avatar-hue is set inline from the chat id. */
+.chat-avatar-tint {
+  background: oklch(0.92 0.05 var(--avatar-hue));
+  color: oklch(0.36 0.09 var(--avatar-hue));
+}
+.dark .chat-avatar-tint {
+  background: oklch(0.34 0.07 var(--avatar-hue));
+  color: oklch(0.92 0.05 var(--avatar-hue));
+}

@@ -11,6 +11,7 @@ import { type ApiTelegram, createApi } from "./app.js";
 let db: Db;
 let telegram: { [K in keyof ApiTelegram]: ReturnType<typeof vi.fn> };
 let app: ReturnType<typeof createApi>;
+let fetchPhoto: ReturnType<typeof vi.fn<(id: number) => Promise<Uint8Array | null>>>;
 let queued: ReturnType<typeof vi.fn<() => void>>;
 
 const CHAT = -100;
@@ -39,6 +40,7 @@ const del = (p: string, h?: Record<string, string>) => send("DELETE", p, undefin
 
 beforeEach(() => {
   queued = vi.fn<() => void>();
+  fetchPhoto = vi.fn<(id: number) => Promise<Uint8Array | null>>().mockResolvedValue(new Uint8Array([9, 8, 7]));
   db = openDatabase(":memory:");
   insertChat(db, { id: CHAT, type: "supergroup", title: "Grupo", username: null }, []);
   insertChat(db, { id: CHANNEL, type: "channel", title: "Canal", username: null }, []);
@@ -46,7 +48,7 @@ beforeEach(() => {
     leaveChat: vi.fn().mockResolvedValue(true), unbanChatMember: vi.fn().mockResolvedValue(true), unbanChatSenderChat: vi.fn().mockResolvedValue(true),
     getChatMember: vi.fn().mockResolvedValue({ status: "member", user: { id: 77, is_bot: false, first_name: "Bea", last_name: "Ruiz" } }),
   };
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued, fetchPhoto });
 });
 
 test("health devuelve estado, entorno y usuario del bot", async () => {
@@ -282,7 +284,7 @@ test.each(["   ", "x".repeat(501)])("una plantilla de aviso inválida da 400 leg
 });
 
 test("health devuelve botUsername null si el bot aún no ha iniciado", async () => {
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, fetchPhoto });
   const r = await get("/api/health");
   expect(await r.json()).toEqual({ status: "ok", appEnv: "development", botUsername: null });
 });
@@ -596,4 +598,21 @@ test("recurring: resuming a rule with no chats is refused", async () => {
   await post(`/api/recurring/${created.id}/pause`);
   const r = await post(`/api/recurring/${created.id}/resume`);
   expect(r.status).toBe(409);
+});
+
+test("GET /chats/:id/photo serves the bytes as a cacheable jpeg", async () => {
+  const res = await get(`/api/chats/${CHAT}/photo`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toBe("image/jpeg");
+  expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
+  expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([9, 8, 7]);
+  expect(fetchPhoto).toHaveBeenCalledWith(CHAT);
+});
+
+test("GET /chats/:id/photo is 404 without a photo and for unknown chats", async () => {
+  fetchPhoto.mockResolvedValue(null);
+  expect((await get(`/api/chats/${CHAT}/photo`)).status).toBe(404);
+  fetchPhoto.mockClear();
+  expect((await get("/api/chats/-999/photo")).status).toBe(404);
+  expect(fetchPhoto).not.toHaveBeenCalled();
 });

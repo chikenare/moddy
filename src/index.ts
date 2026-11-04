@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Bot } from "grammy";
 import { createApi } from "./api/app.js";
+import { createPhotoFetcher } from "./api/photos.js";
 import { createAutoRepliesHandler } from "./community/auto-replies.js";
 import { createRulesHandler } from "./community/rules.js";
 import { config } from "./config.js";
@@ -60,6 +61,7 @@ const api = createApi({
   appEnv: config.appEnv,
   botUsername: () => (bot.isInited() ? bot.botInfo.username : null),
   onMessageQueued: () => scheduler.kick(),
+  fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
 });
 const server = serve({ fetch: api.fetch, port: config.apiPort });
 

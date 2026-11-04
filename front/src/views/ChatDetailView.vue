@@ -2,6 +2,7 @@
 import { ArrowLeft } from '@lucide/vue'
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import AutoRepliesPanel from '@/components/AutoRepliesPanel.vue'
 import FiltersPanel from '@/components/FiltersPanel.vue'
@@ -16,22 +17,29 @@ import { useChatDetailStore } from '@/stores/chatDetail'
 const route = useRoute()
 const id = Number(route.params.id)
 const store = useChatDetailStore(id)
+const typeLabels = { group: 'Group', supergroup: 'Supergroup', channel: 'Channel' } as const
 const chat = computed(() => store.chat)
 
 onMounted(() => store.load())
 </script>
 
 <template>
-  <section class="space-y-4">
+  <section class="max-w-3xl space-y-4">
     <RouterLink to="/" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <ArrowLeft class="size-4" /> Chats
+      <ArrowLeft class="size-4" /> Groups
     </RouterLink>
 
     <p v-if="store.loading && !chat" class="text-sm text-muted-foreground">Loading...</p>
     <p v-else-if="store.error && !chat" class="text-sm text-destructive">{{ store.error }}</p>
 
     <template v-else-if="chat">
-      <h1 class="break-words text-2xl font-semibold tracking-tight">{{ chat.title }}</h1>
+      <div class="flex items-center gap-4">
+        <ChatAvatar :chat="chat" class="size-14 text-lg" />
+        <div class="min-w-0">
+          <h1 class="break-words text-2xl font-semibold tracking-tight">{{ chat.title }}</h1>
+          <p class="text-sm text-muted-foreground">{{ typeLabels[chat.type] }}</p>
+        </div>
+      </div>
 
       <Alert v-if="chat.type === 'channel'">
         <AlertDescription>

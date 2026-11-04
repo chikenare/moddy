@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api, type FormattedMessage, type RecurringMessage, type ScheduledMessage, type TargetStatus } from '@/lib/api'
 import { EMPTY_MESSAGE } from '@/lib/formatting'
@@ -219,7 +220,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
 </script>
 
 <template>
-  <section class="space-y-6">
+  <section class="max-w-3xl space-y-6">
     <h1 class="text-2xl font-semibold tracking-tight">Messages</h1>
 
     <Card class="py-4">
@@ -244,6 +245,7 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
                 :id="`chat-${c.id}`" :model-value="selected.includes(c.id)"
                 @update:model-value="(v) => toggleChat(c.id, v === true)"
               />
+              <ChatAvatar :chat="c" class="size-6 text-[0.65rem]" />
               <Label :for="`chat-${c.id}`" class="min-w-0 break-words font-normal">{{ c.title }}</Label>
             </div>
           </div>
