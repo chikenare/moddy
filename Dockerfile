@@ -10,7 +10,8 @@ RUN corepack install
 FROM base AS dev
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY . .
-CMD ["pnpm", "dev"]
+# pnpm no reenvía SIGTERM; tsx sí
+CMD ["node_modules/.bin/tsx", "watch", "src/index.ts"]
 
 # --- Build ---
 FROM base AS build

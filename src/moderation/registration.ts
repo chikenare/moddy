@@ -67,6 +67,8 @@ export function createRegistrationHandler(deps: { db: Db }): Composer<Context> {
       return next();
     }
 
+    if (msg?.left_chat_member?.id === ctx.me.id) return next();
+
     ensure(ctx, chat);
     if (msg?.new_chat_title !== undefined) updateChatInfo(db, chat.id, { title: msg.new_chat_title });
     return next();

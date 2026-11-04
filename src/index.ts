@@ -8,6 +8,7 @@ import { createEnforcer } from "./moderation/enforcer.js";
 import { FloodTracker } from "./moderation/flood.js";
 import { createModerationHandler } from "./moderation/handler.js";
 import { createRegistrationHandler } from "./moderation/registration.js";
+import { runShutdown } from "./shutdown.js";
 
 const bot = new Bot(config.botToken);
 const db = openDatabase(config.databasePath);
@@ -42,20 +43,29 @@ const api = createApi({ db, telegram: bot.api, appEnv: config.appEnv });
 const server = serve({ fetch: api.fetch, port: config.apiPort });
 
 let closing = false;
+let polling: Promise<void> = Promise.resolve();
 const shutdown = async () => {
   if (closing) return;
   closing = true;
-  await bot.stop();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  await enforcer.drain();
-  db.close();
+  await runShutdown([
+    ["bot.stop", () => bot.stop()],
+    ["polling", () => polling],
+    ["servidor", () => new Promise<void>((resolve) => server.close(() => resolve()))],
+    ["enforcer.drain", () => enforcer.drain()],
+    ["db.close", () => db.close()],
+  ]);
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
 await bot.api.setMyCommands([{ command: "help", description: "Ver ayuda" }]);
 
-bot.start({
+polling = bot.start({
   allowed_updates: ["message", "edited_message", "channel_post", "my_chat_member"],
   onStart: (me) => console.log(`Bot iniciado como @${me.username}`),
+});
+polling.catch((e) => {
+  if (closing) return;
+  console.error("El polling del bot terminó con error:", e);
+  process.exit(1);
 });

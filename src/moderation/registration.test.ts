@@ -128,3 +128,14 @@ test("migrate_to_chat_id y migrate_from_chat_id migran en cualquier orden", asyn
   expect(getChat(db, other.from)).toBeUndefined();
   expect(getChat(db, other.to)).toMatchObject({ moderationEnabled: true });
 });
+
+test("un servicio que anuncia la salida del propio bot no registra el chat", async () => {
+  await t.bot.handleUpdate(groupMessage({ text: undefined, left_chat_member: { id: 999, is_bot: true, first_name: "Test" } }));
+  expect(getChat(db, -100)).toBeUndefined();
+  expect(nextCalled).toBe(true);
+});
+
+test("la salida de otro usuario sí registra el chat", async () => {
+  await t.bot.handleUpdate(groupMessage({ text: undefined, left_chat_member: { id: 55, is_bot: false, first_name: "Luis" } }));
+  expect(getChat(db, -100)).toBeDefined();
+});
