@@ -18,8 +18,10 @@ import { createRegistrationHandler } from "./moderation/registration.js";
 import { createSeenUsersHandler } from "./moderation/seen.js";
 import { createScheduler } from "./messages/scheduler.js";
 import { runShutdown } from "./shutdown.js";
+import { stripRequestDetails } from "./telegram-errors.js";
 
 const bot = new Bot(config.botToken);
+bot.api.config.use(stripRequestDetails(config.botToken));
 const db = openDatabase(config.databasePath);
 const flood = new FloodTracker();
 const stats = createStatsCollector({ db });
