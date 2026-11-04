@@ -4,6 +4,7 @@ import { type FilterAction, updateChatInfo } from "../db/chats.js";
 import { type FilterName, insertEvent } from "../db/events.js";
 import type { AppEnv } from "../env.js";
 import { type NoticeOutcome, renderNotice } from "./notice.js";
+import type { StatsSink } from "../metrics/collector.js";
 import type { Sender } from "./sender.js";
 
 export interface Violation {
@@ -21,9 +22,9 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function createEnforcer(deps: {
   api: EnforcerApi; db: Db; appEnv: AppEnv;
-  sleep?: (ms: number) => Promise<void>; now?: () => number;
+  sleep?: (ms: number) => Promise<void>; now?: () => number; stats?: StatsSink;
 }) {
-  const { api, db, appEnv } = deps;
+  const { api, db, appEnv, stats } = deps;
   const sleep = deps.sleep ?? defaultSleep;
   const now = deps.now ?? Date.now;
   const tails = new Map<number, Promise<void>>();
@@ -100,11 +101,14 @@ export function createEnforcer(deps: {
       }
     }
 
+    // A hit counts even when the ban is simulated; only exempt admins and failed lookups return above.
+    stats?.add(v.chatId, `${v.filter}_hits`);
     deleteOk = true;
     for (let i = 0; i < v.messageIds.length; i += BATCH) {
       const batch = v.messageIds.slice(i, i + BATCH);
       try {
         await withRetry(() => api.deleteMessages(v.chatId, batch));
+        stats?.add(v.chatId, "deleted", batch.length);
       } catch (e) {
         deleteOk = false;
         errors.push(`deleteMessages: ${messageOf(e)}`);
@@ -117,6 +121,7 @@ export function createEnforcer(deps: {
           ? api.banChatSenderChat(v.chatId, v.sender.id)
           : api.banChatMember(v.chatId, v.sender.id)));
         banOk = true;
+        stats?.add(v.chatId, "banned");
       } catch (e) {
         banOk = false;
         errors.push(`ban: ${messageOf(e)}`);

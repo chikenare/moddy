@@ -3,6 +3,7 @@ import type { MessageEntity } from "grammy/types";
 import type { Db } from "../db/connection.js";
 import { type DueTarget, claimTarget, dueTargets, failInterruptedTargets, finishTarget } from "../db/messages.js";
 import { type Recurring, dueRecurring, fireRecurring } from "../db/recurring.js";
+import type { StatsSink } from "../metrics/collector.js";
 import { nextRun } from "./recurrence.js";
 
 export type SchedulerApi = Pick<Api, "sendMessage">;
@@ -17,9 +18,9 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export function createScheduler(deps: {
   api: SchedulerApi; db: Db;
-  now?: () => number; sleep?: (ms: number) => Promise<void>;
+  now?: () => number; sleep?: (ms: number) => Promise<void>; stats?: StatsSink;
 }) {
-  const { api, db } = deps;
+  const { api, db, stats } = deps;
   const now = deps.now ?? (() => Math.floor(Date.now() / 1000));
   const sleep = deps.sleep ?? defaultSleep;
   let running: Promise<void> | null = null;
@@ -51,6 +52,7 @@ export function createScheduler(deps: {
     if (!claimTarget(db, target.messageId, target.chatId, "sending")) return;
     try {
       await send(target);
+      stats?.add(target.chatId, "broadcasts");
       finishTarget(db, target.messageId, target.chatId, { sentAt: now() });
     } catch (e) {
       finishTarget(db, target.messageId, target.chatId, { error: e instanceof Error ? e.message : String(e) });

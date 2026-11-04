@@ -6,6 +6,7 @@ import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import AutoRepliesPanel from '@/components/AutoRepliesPanel.vue'
 import FiltersPanel from '@/components/FiltersPanel.vue'
+import OverviewPanel from '@/components/OverviewPanel.vue'
 import HistoryPanel from '@/components/HistoryPanel.vue'
 import RulesPanel from '@/components/RulesPanel.vue'
 import StaffPanel from '@/components/StaffPanel.vue'
@@ -25,7 +26,7 @@ onMounted(() => store.load())
 
 <template>
   <section class="max-w-3xl space-y-4">
-    <RouterLink to="/" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <RouterLink to="/groups" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
       <ArrowLeft class="size-4" /> Groups
     </RouterLink>
 
@@ -47,8 +48,9 @@ onMounted(() => store.load())
         </AlertDescription>
       </Alert>
 
-      <Tabs v-else default-value="filters" class="gap-4">
+      <Tabs v-else default-value="overview" class="gap-4">
         <TabsList class="h-auto w-full flex-wrap">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="filters">Filters</TabsTrigger>
           <TabsTrigger value="words">Words</TabsTrigger>
           <TabsTrigger value="whitelist">Whitelist</TabsTrigger>
@@ -57,6 +59,7 @@ onMounted(() => store.load())
           <TabsTrigger value="auto-replies">Auto replies</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
+        <TabsContent value="overview"><OverviewPanel :chat-id="id" /></TabsContent>
         <TabsContent value="filters"><FiltersPanel :id="id" /></TabsContent>
         <TabsContent value="words"><WordsPanel :id="id" /></TabsContent>
         <TabsContent value="whitelist"><WhitelistPanel :id="id" /></TabsContent>

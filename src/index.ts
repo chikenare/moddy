@@ -8,7 +8,9 @@ import { config } from "./config.js";
 import { openDatabase } from "./db/connection.js";
 import { purgeEvents } from "./db/events.js";
 import { purgeMessages } from "./db/messages.js";
+import { purgeStats } from "./db/stats.js";
 import { purgeSeenUsers } from "./db/staff.js";
+import { createStatsCollector } from "./metrics/collector.js";
 import { createEnforcer } from "./moderation/enforcer.js";
 import { FloodTracker } from "./moderation/flood.js";
 import { createModerationHandler } from "./moderation/handler.js";
@@ -20,14 +22,15 @@ import { runShutdown } from "./shutdown.js";
 const bot = new Bot(config.botToken);
 const db = openDatabase(config.databasePath);
 const flood = new FloodTracker();
-const enforcer = createEnforcer({ api: bot.api, db, appEnv: config.appEnv });
-const scheduler = createScheduler({ api: bot.api, db });
+const stats = createStatsCollector({ db });
+const enforcer = createEnforcer({ api: bot.api, db, appEnv: config.appEnv, stats });
+const scheduler = createScheduler({ api: bot.api, db, stats });
 
 bot.use(createRegistrationHandler({ db }));
-bot.use(createSeenUsersHandler({ db }));
+bot.use(createSeenUsersHandler({ db, stats }));
 bot.use(createModerationHandler({ db, enforcer, flood }));
 bot.use(createRulesHandler({ db }));
-bot.use(createAutoRepliesHandler({ db }));
+bot.use(createAutoRepliesHandler({ db, stats }));
 
 const privateChat = bot.chatType("private");
 
@@ -48,6 +51,7 @@ const purge = () => {
     purgeEvents(db, now);
     purgeSeenUsers(db, now);
     purgeMessages(db, now);
+    purgeStats(db, now * 1000);
   } catch (e) {
     console.error("Could not purge history:", e);
   }
@@ -76,6 +80,7 @@ const shutdown = async () => {
     ["server", () => new Promise<void>((resolve) => server.close(() => resolve()))],
     ["enforcer.drain", () => enforcer.drain()],
     ["scheduler", () => scheduler.stop()],
+    ["stats.stop", () => stats.stop()],
     ["db.close", () => db.close()],
   ]);
 };
@@ -86,6 +91,7 @@ await bot.api.deleteMyCommands();
 await bot.api.setMyCommands([{ command: "help", description: "Show help" }], { scope: { type: "all_private_chats" } });
 await bot.api.setMyCommands([{ command: "rules", description: "Show the group rules" }], { scope: { type: "all_group_chats" } });
 
+stats.start();
 scheduler.start();
 
 polling = bot.start({

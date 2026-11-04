@@ -45,6 +45,19 @@ export interface RecurringMessage {
 }
 export interface RecurringInput { text: string; entities: FormattedEntity[]; chatIds: number[]; cron: string; timezone: string }
 
+export type StatField =
+  | "messages" | "joins" | "leaves" | "deleted" | "banned"
+  | "link_hits" | "word_hits" | "flood_hits" | "bot_hits" | "auto_replies" | "broadcasts";
+export type StatTotals = Record<StatField, number>;
+export interface Metrics {
+  days: number; from: string; to: string;
+  totals: StatTotals; previous: StatTotals;
+  series: Array<{ day: string } & StatTotals>;
+  topWords: Array<{ value: string; count: number }>;
+  topDomains: Array<{ value: string; count: number }>;
+  topChats: Array<{ id: number; title: string; messages: number; actions: number }>;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -80,6 +93,8 @@ const chat = (id: number) => `/chats/${id}`;
 
 export const api = {
   health: () => request<{ status: string; appEnv: "development" | "production"; botUsername: string | null }>("GET", "/health"),
+  metrics: (days: number, chatId?: number) =>
+    request<Metrics>("GET", `/metrics?days=${days}${chatId === undefined ? "" : `&chatId=${chatId}`}`),
   listChats: () => request<ChatRecord[]>("GET", "/chats"),
   getChat: (id: number) => request<ChatRecord>("GET", chat(id)),
   updateChat: (id: number, patch: Partial<ChatSettings>) => request<ChatRecord>("PATCH", chat(id), patch),

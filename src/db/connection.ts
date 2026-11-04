@@ -90,6 +90,18 @@ export const MIGRATIONS: string[] = [
   ) STRICT;
   ALTER TABLE scheduled_messages ADD COLUMN recurring_id INTEGER REFERENCES recurring_messages(id) ON DELETE SET NULL;
   `,
+  `
+  CREATE TABLE chat_daily_stats (
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    messages INTEGER NOT NULL DEFAULT 0, joins INTEGER NOT NULL DEFAULT 0, leaves INTEGER NOT NULL DEFAULT 0,
+    deleted INTEGER NOT NULL DEFAULT 0, banned INTEGER NOT NULL DEFAULT 0,
+    link_hits INTEGER NOT NULL DEFAULT 0, word_hits INTEGER NOT NULL DEFAULT 0,
+    flood_hits INTEGER NOT NULL DEFAULT 0, bot_hits INTEGER NOT NULL DEFAULT 0,
+    auto_replies INTEGER NOT NULL DEFAULT 0, broadcasts INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (chat_id, day)
+  ) STRICT;
+  `,
 ];
 
 export function openDatabase(path: string): Db {

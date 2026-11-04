@@ -64,3 +64,9 @@ export function findUnauthorizedLink(links: string[], whitelist: string[]): stri
     return !target || !whitelist.some((entry) => matches(target, entry));
   });
 }
+
+// For statistics: the host of a link as the filter saw it, without a leading www.
+export function hostOf(raw: string): string | null {
+  const host = parseTarget(raw)?.host.replace(/^www\./, "");
+  return host || null;
+}

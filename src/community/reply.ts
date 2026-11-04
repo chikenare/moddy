@@ -24,10 +24,10 @@ export class Cooldown {
 }
 
 // Not awaited: long polling handles updates one at a time, so a slow send must not hold up moderation.
-export function replyInBackground(ctx: Context, text: string, entities: FormattedEntity[] = []): void {
+export function replyInBackground(ctx: Context, text: string, entities: FormattedEntity[] = [], onSent?: () => void): void {
   void ctx.reply(text, {
     reply_parameters: { message_id: ctx.msg!.message_id, allow_sending_without_reply: true },
     link_preview_options: { is_disabled: true },
     ...(entities.length ? { entities: entities as MessageEntity[] } : {}),
-  }).catch((e) => console.error(`Could not reply in chat ${ctx.chat?.id}:`, e));
+  }).then(() => onSent?.()).catch((e) => console.error(`Could not reply in chat ${ctx.chat?.id}:`, e));
 }

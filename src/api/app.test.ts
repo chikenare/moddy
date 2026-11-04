@@ -6,6 +6,7 @@ import { type NewEvent, getEvent, insertEvent } from "../db/events.js";
 import { addWord, listWords } from "../db/lists.js";
 import { fireRecurring, getRecurring } from "../db/recurring.js";
 import { recordSeenUser } from "../db/staff.js";
+import { addDailyStats, utcDay } from "../db/stats.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
 let db: Db;
@@ -615,4 +616,26 @@ test("GET /chats/:id/photo is 404 without a photo and for unknown chats", async 
   fetchPhoto.mockClear();
   expect((await get("/api/chats/-999/photo")).status).toBe(404);
   expect(fetchPhoto).not.toHaveBeenCalled();
+});
+
+test("GET /api/metrics returns the period with comparison", async () => {
+  addDailyStats(db, [{ chatId: CHAT, day: utcDay(Date.now()), counts: { messages: 3 } }]);
+  const r = await get("/api/metrics?days=7");
+  expect(r.status).toBe(200);
+  const body = await r.json() as any;
+  expect(body.series).toHaveLength(7);
+  expect(body.totals.messages).toBe(3);
+  expect(body.previous.messages).toBe(0);
+  expect((await (await get(`/api/metrics?days=30&chatId=${CHAT}`)).json() as any).series).toHaveLength(30);
+  expect((await (await get("/api/metrics")).json() as any).days).toBe(30);
+});
+
+test("GET /api/metrics rejects other periods and unknown chats with a readable error", async () => {
+  const bad = await get("/api/metrics?days=14");
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toEqual({ error: "Days must be 7, 30 or 90" });
+  const unknown = await get("/api/metrics?days=7&chatId=-555");
+  expect(unknown.status).toBe(404);
+  expect(await unknown.json()).toEqual({ error: "Chat not found" });
+  expect((await get("/api/metrics?days=7&chatId=abc")).status).toBe(404);
 });

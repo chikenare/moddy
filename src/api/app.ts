@@ -10,6 +10,7 @@ import { getEvent, isActiveBan, listEvents, markUnbanned } from "../db/events.js
 import { addWhitelistEntry, addWord, listWhitelist, listWords, removeWhitelistEntry, removeWord } from "../db/lists.js";
 import { cancelMessage, createMessage, getMessage, listMessages } from "../db/messages.js";
 import { type RecurringInput, createRecurring, deleteRecurring, getRecurring, listRecurring, setRecurringEnabled, updateRecurring } from "../db/recurring.js";
+import { PERIODS, getMetrics } from "../db/stats.js";
 import { addStaff, findSeenUser, listStaff, removeStaff } from "../db/staff.js";
 import type { AppEnv } from "../env.js";
 import { normalizeWhitelistEntry } from "../moderation/links.js";
@@ -136,6 +137,18 @@ export function createApi(deps: {
 
   api.get("/health", (c) => c.json({ status: "ok", appEnv, botUsername: botUsername() }));
   api.get("/chats", (c) => c.json(listChats(db)));
+
+  api.get("/metrics", (c) => {
+    const days = Number(c.req.query("days") ?? 30);
+    if (!(PERIODS as readonly number[]).includes(days)) return fail(c, 400, "Days must be 7, 30 or 90");
+    const raw = c.req.query("chatId");
+    let scope: number | undefined;
+    if (raw !== undefined && raw !== "") {
+      scope = Number(raw);
+      if (!Number.isSafeInteger(scope) || !getChat(db, scope)) return fail(c, 404, "Chat not found");
+    }
+    return c.json(getMetrics(db, { days, chatId: scope, nowMs: Date.now() }));
+  });
 
   api.get("/messages", (c) => c.json({ messages: listMessages(db) }));
   api.post("/messages", async (c) => {
