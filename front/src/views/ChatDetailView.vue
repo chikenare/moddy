@@ -48,7 +48,7 @@ onMounted(() => store.load())
         </AlertDescription>
       </Alert>
 
-      <Tabs v-else default-value="overview" class="gap-4">
+      <Tabs v-else default-value="overview" :unmount-on-hide="false" class="gap-4">
         <TabsList class="h-auto w-full flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="filters">Filters</TabsTrigger>
@@ -59,14 +59,14 @@ onMounted(() => store.load())
           <TabsTrigger value="auto-replies">Auto replies</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" :unmount-on-hide="false"><OverviewPanel :chat-id="id" /></TabsContent>
-        <TabsContent value="filters" :unmount-on-hide="false"><FiltersPanel :id="id" /></TabsContent>
-        <TabsContent value="words" :unmount-on-hide="false"><WordsPanel :id="id" /></TabsContent>
-        <TabsContent value="whitelist" :unmount-on-hide="false"><WhitelistPanel :id="id" /></TabsContent>
-        <TabsContent value="staff" :unmount-on-hide="false"><StaffPanel :id="id" /></TabsContent>
-        <TabsContent value="rules" :unmount-on-hide="false"><RulesPanel :id="id" /></TabsContent>
-        <TabsContent value="auto-replies" :unmount-on-hide="false"><AutoRepliesPanel :id="id" /></TabsContent>
-        <TabsContent value="history" :unmount-on-hide="false"><HistoryPanel :id="id" /></TabsContent>
+        <TabsContent value="overview"><OverviewPanel :chat-id="id" /></TabsContent>
+        <TabsContent value="filters"><FiltersPanel :id="id" /></TabsContent>
+        <TabsContent value="words"><WordsPanel :id="id" /></TabsContent>
+        <TabsContent value="whitelist"><WhitelistPanel :id="id" /></TabsContent>
+        <TabsContent value="staff"><StaffPanel :id="id" /></TabsContent>
+        <TabsContent value="rules"><RulesPanel :id="id" /></TabsContent>
+        <TabsContent value="auto-replies"><AutoRepliesPanel :id="id" /></TabsContent>
+        <TabsContent value="history"><HistoryPanel :id="id" /></TabsContent>
       </Tabs>
     </template>
   </section>

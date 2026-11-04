@@ -18,9 +18,11 @@ const busy = ref(false)
 // What this panel is saving is not an outside change either: the store echoes it back (optimistic update, then the
 // server's reply), and applying it would drop whatever was typed while the request was in flight.
 let sentKey: string | null = null
+// While a save runs (and until its failure has been reverted in the store) nothing from the store may rewrite the draft.
+let saving = false
 const keyOf = (m: FormattedMessage) => JSON.stringify([m.text, m.entities])
 watch(() => JSON.stringify([store.chat?.rules, store.chat?.rulesEntities]), (key) => {
-  if (key === sentKey) return
+  if (key === sentKey || saving) return
   draft.value = store.chat ? saved() : EMPTY_MESSAGE
 })
 
@@ -42,18 +44,17 @@ function trimmed(): FormattedMessage {
 async function save() {
   busy.value = true
   sentKey = keyOf({ text: trimmed().text, entities: trimmed().entities })
-  const typed = draft.value
+  saving = true
   try {
     await store.update({ rules: draft.value.text, rulesEntities: draft.value.entities })
     toast.success('Rules saved')
   } catch (e) {
-    // The store reverts the chat; that must not rewind what the owner typed.
-    draft.value = typed
-    sentKey = keyOf(saved())
-    await nextTick()
-    sentKey = null
     toast.error(e instanceof Error ? e.message : 'Could not save the rules')
   } finally {
+    // The store's revert reaches the watcher on the next flush; it must still see `saving`.
+    await nextTick()
+    saving = false
+    sentKey = null
     busy.value = false
   }
 }
