@@ -1,6 +1,6 @@
 # Detector de spam y panel de moderación: diseño
 
-Fecha: 2026-11-04. Estado: pendiente de aprobación.
+Fecha: 2026-11-04. Estado: aprobado.
 
 ## Por qué
 
@@ -223,6 +223,15 @@ Hono en `/api`, JSON. Las escrituras validan su entrada y responden 4xx con un m
 | `DELETE /api/chats/:id/whitelist?entry=...` | Quitar entrada (va en la query porque `t.me/micanal` contiene `/`) |
 | `GET /api/chats/:id/events` | Historial paginado por cursor |
 | `POST /api/chats/:id/events/:eventId/unban` | Desbanear y marcar el evento |
+| `GET /api/chats/:id/photo` | Foto del grupo (JPEG, en caché; 404 si no tiene) |
+| `GET`, `POST /api/chats/:id/staff`, `DELETE /api/chats/:id/staff/:userId` | Listar, agregar y quitar personal exento |
+| `GET`, `POST /api/chats/:id/auto-replies`, `PUT`, `DELETE /api/chats/:id/auto-replies/:replyId` | Respuestas automáticas |
+| `GET`, `POST /api/messages`, `POST /api/messages/:messageId/cancel` | Mensajes del dueño a varios grupos, inmediatos o programados; listar y cancelar |
+| `GET /api/recurring`, `GET /api/recurring/preview` | Mensajes recurrentes y vista previa de sus próximas ejecuciones |
+| `POST /api/recurring`, `PUT`, `DELETE /api/recurring/:rid`, `POST /api/recurring/:rid/pause`, `POST /api/recurring/:rid/resume` | Crear, editar, borrar, pausar y reanudar una regla recurrente |
+| `GET /api/metrics?days=7\|30\|90&chatId=...` | Estadísticas agregadas, globales o de un grupo |
+
+Los envíos del dueño cuentan en las métricas (`broadcasts`) para cualquier grupo, estén o no activos, porque los mandó él a propósito.
 
 Límites de flood: entre 2 y 50 mensajes, entre 1 y 3600 segundos.
 
@@ -247,7 +256,7 @@ La API no publica ningún puerto en ningún entorno: solo la alcanza el contened
 - **Producción:** nginx con el build publica el puerto **únicamente en `127.0.0.1:8088`**, accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`). El 8080 lo ocupa el dashboard de Traefik.
 - La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite y nginx reenvían el `Host` original del navegador.
 
-Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar al panel enviando ese `Host`. Se acepta en desarrollo, igual que los otros paneles de esa máquina, y se resuelve con el login.
+Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar al panel enviando ese `Host`. Se acepta en desarrollo, igual que los otros paneles de esa máquina, y se resuelve con el login. Ahora el panel también puede enviar mensajes a los grupos reales, de modo que quien llegue al panel por la red local puede publicar en ellos, no solo cambiar su configuración.
 
 Cambios de infraestructura:
 
