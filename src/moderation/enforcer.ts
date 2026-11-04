@@ -1,6 +1,6 @@
 import { type Api, GrammyError } from "grammy";
 import type { Db } from "../db/connection.js";
-import type { FilterAction } from "../db/chats.js";
+import { type FilterAction, updateChatInfo } from "../db/chats.js";
 import { type FilterName, insertEvent } from "../db/events.js";
 import type { AppEnv } from "../env.js";
 import type { Sender } from "./sender.js";
@@ -10,7 +10,7 @@ export interface Violation {
   text: string | null; action: FilterAction; messageIds: number[];
   adminCheckUserId: number | null;
 }
-export type EnforcerApi = Pick<Api, "getChatMember" | "deleteMessages" | "banChatMember" | "banChatSenderChat">;
+export type EnforcerApi = Pick<Api, "getChat" | "getChatMember" | "deleteMessages" | "banChatMember" | "banChatSenderChat">;
 
 const BATCH = 100;
 const ATTEMPTS = 3;
@@ -58,6 +58,20 @@ export function createEnforcer(deps: { api: EnforcerApi; db: Db; appEnv: AppEnv;
         if (member.status === "creator" || member.status === "administrator") return;
       } catch (e) {
         errors.push(`getChatMember: ${messageOf(e)}`);
+        record();
+        return;
+      }
+    }
+
+    if (v.sender.type === "chat") {
+      try {
+        const info = await withRetry(() => api.getChat(v.chatId));
+        if ("linked_chat_id" in info && info.linked_chat_id === v.sender.id) {
+          updateChatInfo(db, v.chatId, { linkedChatId: v.sender.id });
+          return;
+        }
+      } catch (e) {
+        errors.push(`getChat: ${messageOf(e)}`);
         record();
         return;
       }

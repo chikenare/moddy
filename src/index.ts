@@ -18,11 +18,13 @@ const enforcer = createEnforcer({ api: bot.api, db, appEnv: config.appEnv });
 bot.use(createRegistrationHandler({ db }));
 bot.use(createModerationHandler({ db, enforcer, flood }));
 
-bot.command("start", (ctx) =>
+const privateChat = bot.chatType("private");
+
+privateChat.command("start", (ctx) =>
   ctx.reply(`¡Hola, ${ctx.from?.first_name ?? ""}! 👋 Soy un bot de moderación de grupos.`),
 );
 
-bot.command("help", (ctx) => ctx.reply("Comandos disponibles:\n/help - Esta ayuda"));
+privateChat.command("help", (ctx) => ctx.reply("Comandos disponibles:\n/help - Esta ayuda"));
 
 bot.catch((err) => {
   console.error(`Error procesando update ${err.ctx.update.update_id}:`, err.error);

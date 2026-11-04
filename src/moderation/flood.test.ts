@@ -88,3 +88,10 @@ test("olvida remitentes inactivos", () => {
   t.record("nuevo", msg(2, 4000, "a"), limits);
   expect(t.size).toBe(1);
 });
+
+test("la protección de textos cortos: 'buenos dias' y 'buenos dias!' no cuentan juntos", () => {
+  const t = new FloodTracker();
+  for (let i = 1; i <= 6; i++) {
+    expect(t.record("k", msg(i, 100 + i, i % 2 ? "buenos dias" : "buenos dias!"), limits)).toBeNull();
+  }
+});

@@ -1,7 +1,7 @@
 import { Composer, type Context } from "grammy";
 import type { Chat } from "grammy/types";
 import type { Db } from "../db/connection.js";
-import { type ChatType, getChat, insertChat, migrateChatId, updateChatInfo } from "../db/chats.js";
+import { type ChatInfo, type ChatType, getChat, insertChat, migrateChatId, updateChatInfo } from "../db/chats.js";
 import { DEFAULT_WORDS } from "./default-words.js";
 
 type GroupChat = Chat.GroupChat | Chat.SupergroupChat | Chat.ChannelChat;
@@ -14,16 +14,24 @@ export function createRegistrationHandler(deps: { db: Db }): Composer<Context> {
   const composer = new Composer<Context>();
 
   async function refresh(ctx: Context, id: number): Promise<void> {
+    const update: ChatInfo = {};
     try {
       const info = await ctx.api.getChat(id);
-      const member = await ctx.api.getChatMember(id, ctx.me.id);
-      updateChatInfo(db, id, {
-        linkedChatId: "linked_chat_id" in info ? info.linked_chat_id ?? null : null,
-        ...memberInfo(member),
-      });
+      update.linkedChatId = "linked_chat_id" in info ? info.linked_chat_id ?? null : null;
+      if (info.type !== "private") {
+        update.type = info.type as ChatType;
+        if ("title" in info && info.title !== undefined) update.title = info.title;
+        update.username = "username" in info ? info.username ?? null : null;
+      }
     } catch (error) {
-      console.error(`No se pudo actualizar el chat ${id}`, error);
+      console.error(`No se pudo consultar getChat del chat ${id}`, error);
     }
+    try {
+      Object.assign(update, memberInfo(await ctx.api.getChatMember(id, ctx.me.id)));
+    } catch (error) {
+      console.error(`No se pudo consultar getChatMember del chat ${id}`, error);
+    }
+    if (Object.keys(update).length) updateChatInfo(db, id, update);
   }
 
   function ensure(ctx: Context, chat: GroupChat): void {
@@ -64,6 +72,7 @@ export function createRegistrationHandler(deps: { db: Db }): Composer<Context> {
       }
       ensure(ctx, chat);
       updateChatInfo(db, chat.id, memberInfo(change.new_chat_member));
+      if (known) void refresh(ctx, chat.id);
       return next();
     }
 

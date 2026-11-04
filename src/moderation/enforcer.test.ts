@@ -1,6 +1,6 @@
 import { GrammyError } from "grammy";
 import { beforeEach, expect, test, vi } from "vitest";
-import { insertChat } from "../db/chats.js";
+import { getChat, insertChat } from "../db/chats.js";
 import { type Db, openDatabase } from "../db/connection.js";
 import { listEvents } from "../db/events.js";
 import type { AppEnv } from "../env.js";
@@ -19,6 +19,7 @@ const viol = (o: Partial<Violation> = {}): Violation => ({
 
 function setup(appEnv: AppEnv = "production", over: Partial<Record<keyof EnforcerApi, unknown>> = {}) {
   const api = {
+    getChat: vi.fn(async () => ({ id: 1, type: "supergroup", title: "A" })),
     getChatMember: vi.fn(async () => ({ status: "member" })),
     deleteMessages: vi.fn(async () => true),
     banChatMember: vi.fn(async () => true),
@@ -31,6 +32,8 @@ function setup(appEnv: AppEnv = "production", over: Partial<Record<keyof Enforce
 }
 const events = (chat = 1) => listEvents(db, chat, { limit: 10 });
 const tooMany = () => new GrammyError("x", { ok: false, error_code: 429, description: "Too Many Requests", parameters: { retry_after: 3 } }, "deleteMessages", {});
+
+const serverError = () => new GrammyError("x", { ok: false, error_code: 500, description: "Internal", parameters: {} }, "deleteMessages", {});
 
 test("production: miembro normal se borra, se banea sin until_date y se registra", async () => {
   const { api, e } = setup();
@@ -167,4 +170,94 @@ test("si el procesamiento rechaza, registra y el siguiente del mismo chat se eje
   expect(api.deleteMessages).toHaveBeenCalledWith(1, [8]);
   expect(events()).toHaveLength(1);
   err.mockRestore();
+});
+
+const channel = (id = -300) => ({ type: "chat" as const, id, name: "Canal" });
+
+test("canal vinculado con fila desactualizada: no borra, no banea, no registra y actualiza la fila", async () => {
+  expect(getChat(db, 1)!.linkedChatId).toBeNull();
+  const { api, e } = setup("production", { getChat: vi.fn(async () => ({ id: 1, type: "supergroup", title: "A", linked_chat_id: -300 })) });
+  e.enqueue(viol({ sender: channel(), adminCheckUserId: null }));
+  await e.drain();
+  expect(api.getChat).toHaveBeenCalledWith(1);
+  expect(api.deleteMessages).not.toHaveBeenCalled();
+  expect(api.banChatSenderChat).not.toHaveBeenCalled();
+  expect(events()).toHaveLength(0);
+  expect(getChat(db, 1)!.linkedChatId).toBe(-300);
+});
+
+test("si getChat falla con un canal: no borra ni banea, y registra el error", async () => {
+  const { api, e } = setup("production", { getChat: vi.fn(async () => { throw new Error("sin red"); }) });
+  e.enqueue(viol({ sender: channel(), adminCheckUserId: null }));
+  await e.drain();
+  expect(api.deleteMessages).not.toHaveBeenCalled();
+  expect(api.banChatSenderChat).not.toHaveBeenCalled();
+  expect(events()[0]).toMatchObject({ deleteOk: null, banOk: null });
+  expect(events()[0]!.error).toContain("sin red");
+});
+
+test("un canal distinto del vinculado sí se banea", async () => {
+  const { api, e } = setup("production", { getChat: vi.fn(async () => ({ id: 1, type: "supergroup", title: "A", linked_chat_id: -999 })) });
+  e.enqueue(viol({ sender: channel(), adminCheckUserId: null }));
+  await e.drain();
+  expect(api.deleteMessages).toHaveBeenCalledWith(1, [7]);
+  expect(api.banChatSenderChat).toHaveBeenCalledWith(1, -300);
+  expect(events()[0]).toMatchObject({ banOk: true });
+});
+
+test("development: un canal vinculado tampoco se borra", async () => {
+  const { api, e } = setup("development", { getChat: vi.fn(async () => ({ id: 1, type: "supergroup", title: "A", linked_chat_id: -300 })) });
+  e.enqueue(viol({ sender: channel(), adminCheckUserId: null }));
+  await e.drain();
+  expect(api.getChat).toHaveBeenCalled();
+  expect(api.deleteMessages).not.toHaveBeenCalled();
+  expect(events()).toHaveLength(0);
+});
+
+test("un usuario no consulta getChat", async () => {
+  const { api, e } = setup();
+  e.enqueue(viol());
+  await e.drain();
+  expect(api.getChat).not.toHaveBeenCalled();
+});
+
+test("si el borrado falla: deleteOk false, error guardado y el ban se intenta igual", async () => {
+  const { api, e } = setup("production", { deleteMessages: vi.fn(async () => { throw new Error("no se puede borrar"); }) });
+  e.enqueue(viol());
+  await e.drain();
+  expect(api.banChatMember).toHaveBeenCalledWith(1, 10);
+  expect(events()[0]).toMatchObject({ deleteOk: false, banOk: true });
+  expect(events()[0]!.error).toContain("no se puede borrar");
+});
+
+test("un error que no es 429 no se reintenta", async () => {
+  const { api, sleep, e } = setup("production", { deleteMessages: vi.fn(async () => { throw serverError(); }) });
+  e.enqueue(viol());
+  await e.drain();
+  expect(api.deleteMessages).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
+});
+
+test("el reintento por 429 se detiene a los 3 intentos", async () => {
+  const { api, sleep, e } = setup("production", { deleteMessages: vi.fn(async () => { throw tooMany(); }) });
+  e.enqueue(viol());
+  await e.drain();
+  expect(api.deleteMessages).toHaveBeenCalledTimes(3);
+  expect(sleep).toHaveBeenCalledTimes(2);
+  expect(events()[0]).toMatchObject({ deleteOk: false });
+});
+
+test("development con acción delete: dryRun false", async () => {
+  const { e } = setup("development");
+  e.enqueue(viol({ action: "delete" }));
+  await e.drain();
+  expect(events()[0]).toMatchObject({ dryRun: false, deleteOk: true });
+});
+
+test("development con un canal: no llama a banChatSenderChat", async () => {
+  const { api, e } = setup("development");
+  e.enqueue(viol({ sender: channel(), adminCheckUserId: null }));
+  await e.drain();
+  expect(api.banChatSenderChat).not.toHaveBeenCalled();
+  expect(api.deleteMessages).toHaveBeenCalled();
 });

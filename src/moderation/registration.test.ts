@@ -87,6 +87,7 @@ test("left marca un chat conocido y no crea uno desconocido", async () => {
 });
 
 test("channel_post registra el canal", async () => {
+  t.respond("getChat", (p) => ({ id: p.chat_id, type: "channel", title: "Canal" }));
   await t.bot.handleUpdate(channelPost());
   expect(getChat(db, -1002)).toMatchObject({ type: "channel", title: "Canal", moderationEnabled: false });
   expect(nextCalled).toBe(true);
@@ -116,7 +117,7 @@ test("migrate_to_chat_id y migrate_from_chat_id migran en cualquier orden", asyn
   await t.bot.handleUpdate(groupMessage({ chat: group(-1001), migrate_from_chat_id: -1 }));
   await flush();
   expect(getChat(db, -1)).toBeUndefined();
-  expect(getChat(db, -1001)).toMatchObject({ moderationEnabled: true, type: "group" });
+  expect(getChat(db, -1001)).toMatchObject({ moderationEnabled: true, type: "supergroup" });
 
   const other = { from: -2, to: -1002 };
   known(other.from, "group");
@@ -138,4 +139,53 @@ test("un servicio que anuncia la salida del propio bot no registra el chat", asy
 test("la salida de otro usuario sí registra el chat", async () => {
   await t.bot.handleUpdate(groupMessage({ text: undefined, left_chat_member: { id: 55, is_bot: false, first_name: "Luis" } }));
   expect(getChat(db, -100)).toBeDefined();
+});
+
+test("si getChat falla, el resultado de getChatMember se guarda igual", async () => {
+  t.respond("getChat", () => { throw new Error("boom"); });
+  t.respond("getChatMember", (p) => ({
+    status: "administrator", user: { id: p.user_id, is_bot: true, first_name: "Test" },
+    can_delete_messages: true, can_restrict_members: true,
+  }));
+  await t.bot.handleUpdate(groupMessage());
+  await flush();
+  expect(getChat(db, -100)).toMatchObject({ botStatus: "administrator", canDelete: true, canRestrict: true, linkedChatId: null });
+  expect(console.error).toHaveBeenCalled();
+});
+
+test("si getChatMember falla, el resultado de getChat se guarda igual", async () => {
+  t.respond("getChat", (p) => ({ id: p.chat_id, type: "supergroup", title: "Grupo", linked_chat_id: -555 }));
+  t.respond("getChatMember", () => { throw new Error("boom"); });
+  await t.bot.handleUpdate(groupMessage());
+  await flush();
+  expect(getChat(db, -100)).toMatchObject({ linkedChatId: -555, botStatus: "unknown" });
+  expect(console.error).toHaveBeenCalled();
+});
+
+test("el refresco guarda tipo, título y username de getChat", async () => {
+  known(-100, "group");
+  t.respond("getChat", (p) => ({ id: p.chat_id, type: "supergroup", title: "Nuevo título", username: "migrupo" }));
+  await t.bot.handleUpdate(myChatMember({ status: "member" }));
+  await flush();
+  expect(getChat(db, -100)).toMatchObject({ type: "supergroup", title: "Nuevo título", username: "migrupo" });
+});
+
+test("my_chat_member administrator o member de un chat conocido refresca; left y kicked no", async () => {
+  known(-100);
+  await t.bot.handleUpdate(myChatMember({ status: "administrator" }));
+  await flush();
+  expect(t.callsOf("getChat")).toHaveLength(1);
+  await t.bot.handleUpdate(myChatMember({ status: "member" }));
+  await flush();
+  expect(t.callsOf("getChat")).toHaveLength(2);
+  await t.bot.handleUpdate(myChatMember({ status: "left" }));
+  await t.bot.handleUpdate(myChatMember({ status: "kicked" }));
+  await flush();
+  expect(t.callsOf("getChat")).toHaveLength(2);
+});
+
+test("my_chat_member de un chat desconocido refresca una sola vez", async () => {
+  await t.bot.handleUpdate(myChatMember({ status: "member" }));
+  await flush();
+  expect(t.callsOf("getChat")).toHaveLength(1);
 });

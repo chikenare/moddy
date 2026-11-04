@@ -186,3 +186,84 @@ test("chats privados y canales nunca se evalúan", async () => {
   expectNoAction();
   expect(nextCalled).toBe(true);
 });
+
+const noSenderApiCalls = () => {
+  expect(t.callsOf("deleteMessages")).toHaveLength(0);
+  expect(t.callsOf("banChatMember")).toHaveLength(0);
+  expect(t.callsOf("banChatSenderChat")).toHaveLength(0);
+  expect(t.callsOf("getChatMember").filter((c) => c.payload.user_id !== 999)).toHaveLength(0);
+};
+const same = (n: number, extra: object = {}) =>
+  Array.from({ length: n }, (_, i) => groupMessage({ message_id: 900 + i, text: "compra ya", ...extra } as any));
+
+test("interruptor del filtro de bots apagado: no hace nada", async () => {
+  updateChatSettings(db, -100, { botFilterEnabled: false });
+  await run(botAdded([{ id: 50, is_bot: true, first_name: "Spam" }]));
+  expectNoAction();
+  expect(nextCalled).toBe(true);
+});
+
+test("interruptor del filtro de palabras apagado: no hace nada", async () => {
+  addWord(db, -100, "estafa");
+  updateChatSettings(db, -100, { wordFilterEnabled: false });
+  await run(groupMessage({ text: "gran estafa" }));
+  expectNoAction();
+  expect(nextCalled).toBe(true);
+});
+
+test("interruptor del filtro de flood apagado: no hace nada", async () => {
+  updateChatSettings(db, -100, { floodFilterEnabled: false });
+  await run(...same(5));
+  expectNoAction();
+  expect(nextCalled).toBe(true);
+});
+
+test("palabra con acción delete borra pero no banea, aunque el enlace banee", async () => {
+  addWord(db, -100, "estafa");
+  updateChatSettings(db, -100, { wordFilterAction: "delete", linkFilterAction: "delete_ban" });
+  await run(groupMessage({ text: "gran estafa" }));
+  expect(t.callsOf("deleteMessages")).toHaveLength(1);
+  expect(t.callsOf("banChatMember")).toHaveLength(0);
+  expect(events()[0]).toMatchObject({ filter: "word", action: "delete", banOk: null });
+});
+
+test("flood con acción delete borra pero no banea, aunque el enlace banee", async () => {
+  updateChatSettings(db, -100, { floodFilterAction: "delete", linkFilterAction: "delete_ban" });
+  await run(...same(5));
+  expect(t.callsOf("deleteMessages")).toHaveLength(1);
+  expect(t.callsOf("banChatMember")).toHaveLength(0);
+  expect(events()[0]).toMatchObject({ filter: "flood", action: "delete", banOk: null });
+});
+
+test("el flood de un sender_chat se agrupa por canal, no por from", async () => {
+  const ch = (id: number) => ({ id, type: "channel" as const, title: `C${id}` });
+  await run(...same(3, { sender_chat: ch(-801) }), ...same(3, { sender_chat: ch(-802) }));
+  expectNoAction();
+  await run(...same(5, { sender_chat: ch(-803) }));
+  expect(t.callsOf("deleteMessages")).toHaveLength(1);
+  expect(events()[0]).toMatchObject({ filter: "flood", senderType: "chat", senderId: -803 });
+});
+
+test("un mensaje limpio o en la lista blanca no hace llamadas al remitente", async () => {
+  await run(groupMessage({ text: "hola a todos" }));
+  noSenderApiCalls();
+  addWhitelistEntry(db, -100, "a.example");
+  await run(groupMessage(LINK));
+  noSenderApiCalls();
+  expect(events()).toHaveLength(0);
+});
+
+test("una mención con una palabra prohibida no activa el filtro; el texto normal sí", async () => {
+  addWord(db, -100, "mierda");
+  await run(groupMessage({ text: "@mierda_king dijo", entities: [{ type: "mention", offset: 0, length: 12 }] }));
+  expectNoAction();
+  await run(groupMessage({ text: "qué mierda @ana", entities: [{ type: "mention", offset: 11, length: 4 }] }));
+  expect(events()[0]).toMatchObject({ filter: "word", matched: "mierda", text: "qué mierda @ana" });
+});
+
+test("el pie de foto también enmascara menciones", async () => {
+  addWord(db, -100, "mierda");
+  const photo = [{ file_id: "f", file_unique_id: "u1", width: 1, height: 1 }];
+  await run(groupMessage({ text: undefined, caption: "@mierda_king", caption_entities: [{ type: "mention", offset: 0, length: 12 }], photo }));
+  expectNoAction();
+});

@@ -64,6 +64,12 @@ test("acepta Origin del mismo host", async () => {
   expect(r.status).toBe(200);
   expect(r.headers.get("access-control-allow-origin")).toBeNull();
 });
+test.each(["null", "no es una url"])("escritura con Origin %j da 403", async (origin) => {
+  const r = await patch("/api/chats/-100", { floodCount: 6 }, { Host: "localhost:5173", Origin: origin });
+  expect(r.status).toBe(403);
+  expect(getChat(db, CHAT)!.floodCount).not.toBe(6);
+});
+
 test("Origin del mismo hostname pero otro puerto se rechaza", async () => {
   const r = await patch("/api/chats/-100", { floodCount: 6 }, { Host: "localhost:5173", Origin: "http://localhost:9999" });
   expect(r.status).toBe(403);
@@ -86,6 +92,17 @@ test.each([
   const json = (await r.json()) as { error: string };
   expect(typeof json.error).toBe("string");
   expect(json.error.length).toBeGreaterThan(0);
+});
+test.each([
+  [{ floodCount: 1 }, "El número de mensajes debe estar entre 2 y 50"],
+  [{ floodCount: 51 }, "El número de mensajes debe estar entre 2 y 50"],
+  [{ floodSeconds: 0 }, "Los segundos deben estar entre 1 y 3600"],
+  [{ floodSeconds: 3601 }, "Los segundos deben estar entre 1 y 3600"],
+  [{ linkFilterAction: "kick" }, "Valor no válido"],
+  [{ moderationEnabled: "si" }, "Valor no válido"],
+])("PATCH %j da el mensaje legible %s", async (body, message) => {
+  const r = await patch("/api/chats/-100", body);
+  expect(await r.json()).toEqual({ error: message });
 });
 test("PATCH parcial guarda y devuelve el chat; id desconocido da 404", async () => {
   const before = getChat(db, CHAT)!;
@@ -119,10 +136,17 @@ test("palabras: normaliza, duplicada no falla, vacía da 400, borrar por query",
   expect(await (await get("/api/chats/-100/words")).json()).toEqual({ words: ["coño"] });
   expect((await post("/api/chats/-100/words", { word: "  " })).status).toBe(400);
   expect((await post("/api/chats/-100/words", {})).status).toBe(400);
+  expect((await post("/api/chats/-100/words", { word: 5 })).status).toBe(400);
   expect((await del("/api/chats/-100/words?word=co%C3%B1o")).status).toBe(204);
   expect(listWords(db, CHAT)).toEqual([]);
   expect((await del("/api/chats/-100/words?word=nada")).status).toBe(404);
   expect((await del("/api/chats/-100/words")).status).toBe(404);
+});
+test.each(["xxx", "a", "  A "])("palabra %j de menos de 2 caracteres da 400 con mensaje", async (word) => {
+  const r = await post("/api/chats/-100/words", { word });
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error: "La palabra debe tener al menos 2 caracteres" });
+  expect(listWords(db, CHAT)).toEqual([]);
 });
 test("subrutas de un chat desconocido dan 404", async () => {
   expect((await get("/api/chats/-999/words")).status).toBe(404);
@@ -193,12 +217,15 @@ test("desbanear un evento inexistente da 404", async () => {
   expect((await post("/api/chats/-100/events/999/unban")).status).toBe(404);
 });
 test("si Telegram falla al desbanear da 502 y no marca", async () => {
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
   telegram.unbanChatMember.mockRejectedValue(new Error("red caída"));
   const e = insertEvent(db, ev());
   const r = await post(`/api/chats/-100/events/${e.id}/unban`);
   expect(r.status).toBe(502);
   expect(await r.json()).toEqual({ error: expect.any(String) });
   expect(getEvent(db, CHAT, e.id)!.unbannedAt).toBeNull();
+  expect(err).toHaveBeenCalledWith(expect.stringContaining("desbanear"), expect.any(Error));
+  err.mockRestore();
 });
 
 test("salir y olvidar llama leaveChat y borra", async () => {
@@ -210,6 +237,7 @@ test("salir y olvidar llama leaveChat y borra", async () => {
   expect((await del("/api/chats/-100")).status).toBe(404);
 });
 test("si el bot ya no estaba (400/403) también borra; otro error da 502 y conserva", async () => {
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
   telegram.leaveChat.mockRejectedValueOnce(grammyError(403));
   expect((await del("/api/chats/-100")).status).toBe(204);
   expect((await get("/api/chats/-100")).status).toBe(404);
@@ -223,6 +251,9 @@ test("si el bot ya no estaba (400/403) también borra; otro error da 502 y conse
   telegram.leaveChat.mockRejectedValueOnce(new Error("red caída"));
   expect((await del("/api/chats/-300")).status).toBe(502);
   expect((await get("/api/chats/-300")).status).toBe(200);
+  expect(err).toHaveBeenCalledTimes(2);
+  expect(err).toHaveBeenCalledWith(expect.stringContaining("salir"), expect.any(Error));
+  err.mockRestore();
 });
 
 test("ruta desconocida bajo /api da 404 JSON", async () => {
