@@ -55,7 +55,7 @@ function matches(link: Target, entry: string): boolean {
   const host = slash === -1 ? entry : entry.slice(0, slash);
   const path = slash === -1 ? "" : entry.slice(slash).toLowerCase().replace(/\/+$/, "");
   if (path === "") return link.host === host || link.host.endsWith(`.${host}`);
-  return link.host === host && (link.path === path || link.path.startsWith(`${path}/`));
+  return link.host.replace(/^www\./, "") === host && (link.path === path || link.path.startsWith(`${path}/`));
 }
 
 export function findUnauthorizedLink(links: string[], whitelist: string[]): string | undefined {

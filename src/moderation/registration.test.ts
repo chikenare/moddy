@@ -189,3 +189,19 @@ test("my_chat_member de un chat desconocido refresca una sola vez", async () => 
   await flush();
   expect(t.callsOf("getChat")).toHaveLength(1);
 });
+
+test("si la escritura del refresco falla, se registra y no hay rechazo sin manejar", async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (e: unknown) => unhandled.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  t.respond("getChatMember", (p) => {
+    db.close();
+    return { status: "member", user: { id: p.user_id, is_bot: true, first_name: "Test" } };
+  });
+  await t.bot.handleUpdate(groupMessage()).catch(() => {});
+  await flush();
+  await flush();
+  process.off("unhandledRejection", onUnhandled);
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("No se pudo guardar"), expect.anything());
+  expect(unhandled).toEqual([]);
+});

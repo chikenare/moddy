@@ -31,7 +31,11 @@ export function createRegistrationHandler(deps: { db: Db }): Composer<Context> {
     } catch (error) {
       console.error(`No se pudo consultar getChatMember del chat ${id}`, error);
     }
-    if (Object.keys(update).length) updateChatInfo(db, id, update);
+    try {
+      if (Object.keys(update).length) updateChatInfo(db, id, update);
+    } catch (error) {
+      console.error(`No se pudo guardar la información del chat ${id}`, error);
+    }
   }
 
   function ensure(ctx: Context, chat: GroupChat): void {

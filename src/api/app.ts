@@ -102,7 +102,7 @@ export function createApi(deps: { db: Db; telegram: ApiTelegram; appEnv: AppEnv 
     const body = await readBody(c, textBody("word"));
     if ("response" in body) return body.response;
     const word = normalizeWord(body.data.word!);
-    if (word === null) return fail(c, 400, "La palabra debe tener al menos 2 caracteres");
+    if (word === null) return fail(c, 400, "La palabra debe tener entre 2 y 100 caracteres");
     addWord(db, chatId(c), word);
     return c.json({ word }, 201);
   });

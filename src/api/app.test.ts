@@ -142,10 +142,10 @@ test("palabras: normaliza, duplicada no falla, vacía da 400, borrar por query",
   expect((await del("/api/chats/-100/words?word=nada")).status).toBe(404);
   expect((await del("/api/chats/-100/words")).status).toBe(404);
 });
-test.each(["xxx", "a", "  A "])("palabra %j de menos de 2 caracteres da 400 con mensaje", async (word) => {
+test.each(["xxx", "a", "  A ", "ab".repeat(51)])("palabra %j fuera de 2 a 100 caracteres da 400 con mensaje", async (word) => {
   const r = await post("/api/chats/-100/words", { word });
   expect(r.status).toBe(400);
-  expect(await r.json()).toEqual({ error: "La palabra debe tener al menos 2 caracteres" });
+  expect(await r.json()).toEqual({ error: "La palabra debe tener entre 2 y 100 caracteres" });
   expect(listWords(db, CHAT)).toEqual([]);
 });
 test("subrutas de un chat desconocido dan 404", async () => {

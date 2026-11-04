@@ -147,7 +147,7 @@ Nunca se actúa contra:
 - Remitentes con estado `creator` o `administrator`, comprobado en el momento y sin caché, para que un admin recién nombrado no sea baneado.
 - Admins anónimos: `sender_chat.id` igual al id del grupo.
 - Reenvíos automáticos del canal vinculado: `is_automatic_forward`.
-- Mensajes enviados como el canal vinculado: `sender_chat.id` igual a `linked_chat_id`, comprobado en vivo con `getChat` en el momento de actuar, igual que los admins y sin fiarse de la fila guardada (que puede estar desactualizada). Si coincide, no se actúa y se actualiza `linked_chat_id`.
+- Mensajes enviados como el canal vinculado: `sender_chat.id` igual a `linked_chat_id`, un canal que coincide con el `linked_chat_id` guardado queda exento sin consultar. Cualquier otro canal se comprueba en vivo con `getChat` antes de actuar, y si coincide no se actúa y se actualiza la fila. Un canal que fue desvinculado sigue exento hasta el siguiente refresco.
 
 Si `getChatMember` falla, no se actúa y se registra el error. Sin confirmar que no es admin, no se banea. Igual con `getChat`: si falla al comprobar un canal, no se actúa y se registra el error.
 

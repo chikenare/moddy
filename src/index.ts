@@ -60,7 +60,8 @@ const shutdown = async () => {
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
-await bot.api.setMyCommands([{ command: "help", description: "Ver ayuda" }]);
+await bot.api.deleteMyCommands();
+await bot.api.setMyCommands([{ command: "help", description: "Ver ayuda" }], { scope: { type: "all_private_chats" } });
 
 polling = bot.start({
   allowed_updates: ["message", "edited_message", "channel_post", "my_chat_member"],
