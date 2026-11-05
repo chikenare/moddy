@@ -70,7 +70,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 | Acceso al panel en producción por dominio con HTTPS, detrás del Traefik de Dokploy | Queda expuesto a internet protegido solo por el login; por eso exige `PANEL_HOST`, obliga a cambiar la contraseña inicial y rechaza las más comunes |
 | Login con usuario y contraseña guardados en SQLite, no en `.env` ni con Telegram | Un solo dueño; un error de configuración no para la moderación, y no depende de conocer su ID de Telegram |
 | Se quita todo el flujo de compra (`/planes`, `/terms`, `/paysupport`, `/refund`), no solo la llamada a la API. El proyecto `playhubplus-api` no se modifica | Sin esa API no hay planes que vender. Sigue recuperable desde git |
-| Nombre neutro `telegram-bot` para paquete y proyecto de Docker | El dueño quitó la marca sin indicar otro nombre; textos del bot sin marca |
+| Nombre `moddy` para paquete, imagen y proyecto de Docker | Lo eligió el dueño |
 
 ## Comportamiento del detector
 
@@ -283,7 +283,7 @@ Límite conocido: Traefik escucha en todas las interfaces de la máquina de desa
 
 Cambios de infraestructura:
 
-- `compose.yml` y `compose.prod.yml`: `name: telegram-bot`, para que renombrar la carpeta no deje huérfano el volumen de la base; servicio `bot-front` solo en desarrollo; volumen con nombre `data` en `/app/data`.
+- `compose.yml`: `name: moddy`, para que renombrar la carpeta no deje huérfano el volumen de la base; en `compose.prod.yml` el nombre lo pone Dokploy; servicio `bot-front` solo en desarrollo; volumen con nombre `data` en `/app/data`.
 - `compose.yml`: red externa `traefik` y labels del panel (un solo router, entrypoint `web`).
 - `Dockerfile`: una etapa compila el panel desde `front/` y `prod` lo copia a `./public`; crear `/app/data` con dueño `node` antes de `USER node`, o la imagen de producción no podrá escribir la base.
 - `.dockerignore`: agregar `data`, `docs`, `front/node_modules` y `front/dist`. `.gitignore`: agregar `data/`.

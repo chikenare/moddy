@@ -1,4 +1,4 @@
-name: telegram-bot
+name: moddy
 
 services:
   bot:
