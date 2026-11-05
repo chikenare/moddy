@@ -34,6 +34,12 @@ test("remembers who writes in a chat with auto replies on", async () => {
   expect(findSeenUser(db, CHAT, "juanp")?.userId).toBe(20);
 });
 
+test("remembers who writes in a chat with commands on, so /ban @user can find them", async () => {
+  updateChatSettings(db, CHAT, { commandsEnabled: true });
+  await t.bot.handleUpdate(groupMessage({ from: JUAN }));
+  expect(findSeenUser(db, CHAT, "juanp")?.userId).toBe(20);
+});
+
 test("stores nothing about a chat with everything switched off", async () => {
   await t.bot.handleUpdate(groupMessage({ from: JUAN }));
   expect(findSeenUser(db, CHAT, "juanp")).toBeUndefined();

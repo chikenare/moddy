@@ -9,9 +9,9 @@ test('initials take up to two letters from the first words', () => {
 })
 
 test('the avatar hue is stable per id and within the color wheel', () => {
-  expect(avatarHue(-1002237599288)).toBe(avatarHue(-1002237599288))
+  expect(avatarHue(-1001234567890)).toBe(avatarHue(-1001234567890))
   expect(avatarHue(-1)).not.toBe(avatarHue(-2))
-  for (const id of [-1, -999001, -1004439816012, 0]) {
+  for (const id of [-1, -999001, -1009876543210, 0]) {
     const h = avatarHue(id)
     expect(h).toBeGreaterThanOrEqual(0)
     expect(h).toBeLessThan(360)

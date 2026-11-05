@@ -25,7 +25,7 @@ export function createSeenUsersHandler(deps: { db: Db; stats?: StatsSink }): Com
       if (message.left_chat_member && !message.left_chat_member.is_bot) stats.add(ctx.chat.id, "leaves");
       if (!from.is_bot && !senderChat && CONTENT_KEYS.some((k) => message[k] !== undefined)) stats.add(ctx.chat.id, "messages");
     }
-    if (chat && (chat.moderationEnabled || chat.autoRepliesEnabled) && !from.is_bot && !senderChat) {
+    if (chat && (chat.moderationEnabled || chat.autoRepliesEnabled || chat.commandsEnabled) && !from.is_bot && !senderChat) {
       try {
         recordSeenUser(db, chat.id, {
           id: from.id,
