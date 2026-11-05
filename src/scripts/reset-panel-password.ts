@@ -1,0 +1,13 @@
+// For when the panel password is lost. Run it inside the bot's container.
+// In production: node dist/scripts/reset-panel-password.js
+// In development: node_modules/.bin/tsx src/scripts/reset-panel-password.ts
+import { describeNewPassword, resetAccountPassword } from "../auth/account.js";
+import { config } from "../config.js";
+import { openDatabase } from "../db/connection.js";
+
+const db = openDatabase(config.databasePath);
+const password = resetAccountPassword(db, Date.now());
+db.close();
+
+console.log(describeNewPassword(password));
+console.log("Every session has ended. If the login is locked after failed attempts, restart the bot or wait 15 minutes.");

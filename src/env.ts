@@ -7,20 +7,6 @@ export function parseAppEnv(value: string | undefined): AppEnv {
   );
 }
 
-const EXAMPLE_PASSWORD = "change-me-to-a-long-random-password";
-const MIN_PASSWORD = 12;
-// Both have to fit in a login request, which is limited to 4 KB.
-const MAX_CREDENTIAL = 256;
-
-export function parsePanelCredentials(user: string | undefined, password: string | undefined): { user: string; password: string } {
-  if (!user) throw new Error("PANEL_USER is required");
-  if (user.length > MAX_CREDENTIAL) throw new Error(`PANEL_USER must have at most ${MAX_CREDENTIAL} characters`);
-  if (!password || password.trim().length < MIN_PASSWORD) throw new Error(`PANEL_PASSWORD must have at least ${MIN_PASSWORD} characters`);
-  if (password.length > MAX_CREDENTIAL) throw new Error(`PANEL_PASSWORD must have at most ${MAX_CREDENTIAL} characters`);
-  if (password === EXAMPLE_PASSWORD) throw new Error("PANEL_PASSWORD still has the example value");
-  return { user, password };
-}
-
 const DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 export function parsePanelHost(value: string | undefined): string | null {

@@ -7,7 +7,8 @@ import { addWord, listWords } from "../db/lists.js";
 import { fireRecurring, getRecurring } from "../db/recurring.js";
 import { recordSeenUser } from "../db/staff.js";
 import { addDailyStats, utcDay } from "../db/stats.js";
-import { createSession, sessionKey } from "../auth/session.js";
+import { hashPassword, saveAccount } from "../auth/account.js";
+import { createSession } from "../auth/session.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
 let db: Db;
@@ -16,7 +17,6 @@ let app: ReturnType<typeof createApi>;
 let fetchPhoto: ReturnType<typeof vi.fn<(id: number) => Promise<Uint8Array | null>>>;
 let queued: ReturnType<typeof vi.fn<() => void>>;
 let session: string;
-const CREDENTIALS = { user: "owner", password: "correct horse battery" };
 
 const CHAT = -100;
 const CHANNEL = -200;
@@ -48,12 +48,13 @@ beforeEach(() => {
   db = openDatabase(":memory:");
   insertChat(db, { id: CHAT, type: "supergroup", title: "Grupo", username: null }, []);
   insertChat(db, { id: CHANNEL, type: "channel", title: "Canal", username: null }, []);
-  session = `panel_session=${createSession(db, sessionKey(CREDENTIALS), Date.now())}`;
+  saveAccount(db, { username: "admin", passwordHash: hashPassword("correct horse battery", { N: 2, r: 1, p: 1 }), mustChangePassword: false }, Date.now());
+  session = `panel_session=${createSession(db, Date.now())}`;
   telegram = {
     leaveChat: vi.fn().mockResolvedValue(true), unbanChatMember: vi.fn().mockResolvedValue(true), unbanChatSenderChat: vi.fn().mockResolvedValue(true),
     getChatMember: vi.fn().mockResolvedValue({ status: "member", user: { id: 77, is_bot: false, first_name: "Bea", last_name: "Ruiz" } }),
   };
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued, credentials: CREDENTIALS, fetchPhoto });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued, fetchPhoto });
 });
 
 test("info devuelve entorno y usuario del bot", async () => {
@@ -289,7 +290,7 @@ test.each(["   ", "x".repeat(501)])("una plantilla de aviso inválida da 400 leg
 });
 
 test("info devuelve botUsername null si el bot aún no ha iniciado", async () => {
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, credentials: CREDENTIALS, fetchPhoto });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, fetchPhoto });
   const r = await get("/api/info");
   expect(await r.json()).toEqual({ appEnv: "development", botUsername: null });
 });

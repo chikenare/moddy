@@ -10,13 +10,13 @@ const route = useRoute()
 const auth = useAuthStore()
 const store = useChatsStore()
 
-watch(() => auth.authenticated, (authenticated) => {
-  if (authenticated) void store.load()
+watch(() => auth.authenticated === true && !auth.mustChangePassword, (ready) => {
+  if (ready) void store.load()
 }, { immediate: true })
 </script>
 
 <template>
-  <RouterView v-if="route.meta.public" />
+  <RouterView v-if="route.meta.bare" />
   <AppLayout v-else>
     <RouterView :key="$route.fullPath" />
   </AppLayout>

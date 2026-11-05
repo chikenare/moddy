@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
-import { createSession, sessionKey } from "../auth/session.js";
+import { hashPassword, saveAccount } from "../auth/account.js";
+import { createSession } from "../auth/session.js";
 import { openDatabase } from "../db/connection.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
@@ -10,16 +11,16 @@ let base: string;
 let withPanel: ReturnType<typeof createApi>;
 let withoutPanel: ReturnType<typeof createApi>;
 
-const CREDENTIALS = { user: "owner", password: "correct horse battery" };
 const cookies = new WeakMap<object, string>();
 
 const make = (panelDir?: string | null) => {
   const db = openDatabase(":memory:");
   const app = createApi({
     db, telegram: {} as ApiTelegram, appEnv: "development",
-    botUsername: () => "mi_bot", onMessageQueued: vi.fn(), fetchPhoto: vi.fn(), panelDir, credentials: CREDENTIALS,
+    botUsername: () => "mi_bot", onMessageQueued: vi.fn(), fetchPhoto: vi.fn(), panelDir,
   });
-  cookies.set(app, `panel_session=${createSession(db, sessionKey(CREDENTIALS), Date.now())}`);
+  saveAccount(db, { username: "admin", passwordHash: hashPassword("correct horse battery", { N: 2, r: 1, p: 1 }), mustChangePassword: false }, Date.now());
+  cookies.set(app, `panel_session=${createSession(db, Date.now())}`);
   return app;
 };
 const call = (app: ReturnType<typeof createApi>, path: string, init: RequestInit = {}) =>

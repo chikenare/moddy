@@ -4,20 +4,20 @@ beforeEach(() => {
   vi.resetModules();
   vi.stubEnv("BOT_TOKEN", "000000:test");
   vi.stubEnv("APP_ENV", "development");
-  vi.stubEnv("PANEL_USER", "admin");
+  vi.stubEnv("PANEL_HOST", "");
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-test("the configuration loads with valid panel credentials", async () => {
-  vi.stubEnv("PANEL_PASSWORD", "a long enough password");
+test("the configuration loads without any panel login in the environment", async () => {
   const { config } = await import("./config.js");
-  expect(config.panelCredentials).toEqual({ user: "admin", password: "a long enough password" });
+  expect(config.panelHost).toBeNull();
+  expect(Object.keys(config)).not.toContain("panelCredentials");
 });
 
-test.each(["short", "change-me-to-a-long-random-password"])("the configuration refuses the password %j", async (password) => {
-  vi.stubEnv("PANEL_PASSWORD", password);
-  await expect(import("./config.js")).rejects.toThrow(/PANEL_PASSWORD/);
+test("the configuration refuses a panel host that is not a domain", async () => {
+  vi.stubEnv("PANEL_HOST", "https://panel.example.com");
+  await expect(import("./config.js")).rejects.toThrow(/PANEL_HOST/);
 });

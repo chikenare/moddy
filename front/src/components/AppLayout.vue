@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LogOut, Moon, Sun } from '@lucide/vue'
+import { KeyRound, LogOut, Moon, Sun } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/sidebar'
 import BotLogo from '@/components/BotLogo.vue'
 import AppNav, { nav } from '@/components/AppNav.vue'
+import { CHANGE_PASSWORD_PATH } from '@/lib/next'
 import { theme, toggleTheme } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
@@ -53,6 +54,14 @@ async function logout() {
             <SidebarMenuButton @click="toggleTheme">
               <Sun v-if="isDark" /><Moon v-else />
               <span>{{ isDark ? 'Light mode' : 'Dark mode' }}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child>
+              <RouterLink :to="CHANGE_PASSWORD_PATH">
+                <KeyRound />
+                <span>Change password</span>
+              </RouterLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

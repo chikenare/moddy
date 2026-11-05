@@ -19,7 +19,6 @@ import type { AppEnv } from "../env.js";
 import { normalizeWhitelistEntry } from "../moderation/links.js";
 import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
-import type { Credentials } from "../auth/session.js";
 import { createAuth } from "./auth.js";
 import { hostOriginGuard } from "./guard.js";
 import type { PhotoFetcher } from "./photos.js";
@@ -117,14 +116,14 @@ export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
   fetchPhoto: PhotoFetcher; panelDir?: string | null; panelHost?: string | null;
-  credentials: Credentials; now?: () => number;
+  now?: () => number;
 }): Hono {
-  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir, credentials } = deps;
+  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir } = deps;
   const app = new Hono();
   const api = new Hono();
 
   api.use("*", hostOriginGuard(deps.panelHost));
-  const auth = createAuth({ db, credentials, now: deps.now ?? Date.now });
+  const auth = createAuth({ db, now: deps.now ?? Date.now });
   api.use("*", auth.requireSession);
   api.route("/auth", auth.routes);
 

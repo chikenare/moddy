@@ -216,6 +216,7 @@ Hono en `/api`, JSON. Las escrituras validan su entrada y responden 4xx con un m
 | `GET /api/health` | Estado, sin datos del bot; público |
 | `GET /api/auth/session` | Si hay sesión; público |
 | `POST /api/auth/login`, `POST /api/auth/logout` | Abrir y cerrar sesión; públicos |
+| `POST /api/auth/password` | Cambiar la contraseña; lo único disponible, además de lo público, hasta cambiar la inicial |
 | `GET /api/info` | Entorno y usuario del bot |
 | `GET /api/chats` | Chats registrados con estado y permisos del bot |
 | `GET /api/chats/:id` | Detalle y configuración |
@@ -254,15 +255,19 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. P
 
 ## Acceso, login y despliegue
 
-**Login.** `PANEL_USER` y `PANEL_PASSWORD` son obligatorios: sin ellos, o con una contraseña fuera de 12 a 256 caracteres, el bot no arranca, y `compose.prod.yml` detiene el despliegue si falta alguno, para no reemplazar un bot que funciona. Toda la API exige sesión salvo `GET /api/health`, `GET /api/auth/session`, `POST /api/auth/login` y `POST /api/auth/logout`, con denegación por defecto y una prueba que recorre todas las rutas; los archivos del panel son públicos para poder mostrar el login. La sesión es la cookie `panel_session`, `HttpOnly`, `SameSite=Strict`, y `Secure` detrás de HTTPS, de 30 días. SQLite solo guarda un HMAC del token, con una clave derivada de las credenciales mediante scrypt: una copia de la base no permite probar contraseñas. Cerrar sesión la termina en el servidor, y cambiar el usuario o la contraseña termina todas tras `docker compose up -d`; `restart` conserva los valores anteriores.
+**Login.** El primer arranque crea el usuario `admin` con una contraseña aleatoria y la muestra una sola vez en los logs, en la línea `Panel login`. En ese estado el servidor solo admite cambiarla: el resto de la API responde 403, y el panel lleva a `/change-password`. Después se cambia desde el panel (pide la actual, mínimo 12 y máximo 256 caracteres), y si se pierde, `node dist/scripts/reset-panel-password.js` dentro del contenedor genera otra, también de cambio obligatorio. No hay credenciales en el entorno, así que un error ahí no impide arrancar al bot ni para la moderación.
 
-Tras 10 intentos fallidos en 15 minutos el login se bloquea para todos durante ese tiempo, sin afectar a las sesiones abiertas. El cuerpo se lee antes de comprobar el límite, y la comprobación y el registro del fallo no ceden el control, así que un intento retenido a medio enviar también cuenta. El cuerpo del login admite como máximo 4 KB. El inicio del bloqueo se registra en el log sin credenciales.
+Toda la API exige sesión salvo `GET /api/health`, `GET /api/auth/session`, `POST /api/auth/login` y `POST /api/auth/logout`, con denegación por defecto y una prueba que recorre todas las rutas; los archivos del panel son públicos para poder mostrar el login. La sesión es la cookie `panel_session`, `HttpOnly`, `SameSite=Strict`, y `Secure` detrás de HTTPS, de 30 días. Cerrar sesión la termina en el servidor; cambiar o restablecer la contraseña termina todas, y el navegador que la cambia recibe una nueva.
+
+SQLite guarda la contraseña como hash scrypt con sal propia (N=2^17, r=8, p=1, lo que recomienda OWASP) y el SHA-256 del token de cada sesión. Una copia de la base no permite usar sesiones, pero sí probar contraseñas sin conexión, y por eso se exige un mínimo de 12 caracteres y conviene proteger los respaldos. El hash se calcula de forma síncrona y bloquea el proceso unos cientos de milisegundos, lo que el límite de intentos mantiene acotado.
+
+Tras 10 intentos fallidos en 15 minutos, contando el login y la contraseña actual al cambiarla, se bloquean ambos para todos durante ese tiempo, sin afectar a las sesiones abiertas. El cuerpo se lee antes de comprobar el límite, y la comprobación y el registro del fallo no ceden el control, así que un intento retenido a medio enviar también cuenta. El cuerpo de estas peticiones admite como máximo 4 KB. El inicio del bloqueo se registra en el log sin credenciales.
 
 Límites conocidos del login:
 
 - Con un dominio público, cualquiera en internet puede mantener el login bloqueado con 10 peticiones cada 15 minutos. No puede entrar ni afecta a las sesiones abiertas, y reiniciar el bot borra el bloqueo.
-- Volver a una contraseña anterior antes de 30 días revive sus sesiones, porque distinguirlas exigiría guardar algo con lo que probar contraseñas. Tras una sospecha de robo hay que elegir una contraseña nueva, no volver a una antigua.
-- `compose.prod.yml` no comprueba la longitud: con una contraseña corta `up` termina bien, pero el bot no arranca y se reinicia en bucle hasta corregirla.
+- Hasta el primer inicio de sesión, quien pueda leer los logs tiene la contraseña inicial. Basta con cambiarla nada más desplegar.
+- Solo hay una cuenta, y su usuario no se puede cambiar.
 
 En desarrollo la API no publica ningún puerto: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`. En producción, el mismo proceso sirve la API y el panel.
 

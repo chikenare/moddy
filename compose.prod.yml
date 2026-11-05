@@ -1,5 +1,6 @@
 # For Dokploy: set the variables below in the Environment tab and, in the Domains tab,
 # point PANEL_HOST at this service on port 3000 with HTTPS on.
+# The first start creates the panel user admin and prints its password once in the logs: look for "Panel login".
 services:
   bot:
     image: registry.delirio.org/chiken/telegram-bot:${IMAGE_TAG:-latest}
@@ -7,8 +8,6 @@ services:
       # A missing value stops the deploy before it replaces a working bot.
       BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
       APP_ENV: production
-      PANEL_USER: ${PANEL_USER:?Set PANEL_USER}
-      PANEL_PASSWORD: ${PANEL_PASSWORD:?Set PANEL_PASSWORD}
       PANEL_HOST: ${PANEL_HOST:?Set PANEL_HOST to the panel domain}
     volumes:
       - data:/app/data

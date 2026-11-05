@@ -1,28 +1,35 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { api } from "@/lib/api";
+import { type SessionState, api } from "@/lib/api";
 
 export const useAuthStore = defineStore("auth", () => {
   const authenticated = ref<boolean | null>(null);
+  const mustChangePassword = ref(false);
   const unreachable = ref(false);
 
-  async function check(): Promise<boolean> {
-    if (authenticated.value !== null) return authenticated.value;
+  function apply(state: SessionState) {
+    authenticated.value = state.authenticated;
+    mustChangePassword.value = state.mustChangePassword;
+    unreachable.value = false;
+  }
+
+  async function check(): Promise<SessionState> {
     try {
-      authenticated.value = (await api.session()).authenticated;
-      unreachable.value = false;
-      return authenticated.value;
+      if (authenticated.value === null) apply(await api.session());
+      return { authenticated: authenticated.value === true, mustChangePassword: mustChangePassword.value };
     } catch {
       // Still unknown: an outage does not mean logged out, so the next navigation asks again.
       unreachable.value = true;
-      return false;
+      return { authenticated: false, mustChangePassword: false };
     }
   }
 
   async function login(username: string, password: string) {
-    await api.login(username, password);
-    authenticated.value = true;
-    unreachable.value = false;
+    apply(await api.login(username, password));
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    apply(await api.changePassword(currentPassword, newPassword));
   }
 
   async function logout() {
@@ -31,5 +38,5 @@ export const useAuthStore = defineStore("auth", () => {
     window.location.assign("/login");
   }
 
-  return { authenticated, unreachable, check, login, logout };
+  return { authenticated, mustChangePassword, unreachable, check, login, changePassword, logout };
 });

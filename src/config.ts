@@ -1,4 +1,4 @@
-import { parseAppEnv, parsePanelCredentials, parsePanelHost, parsePort } from "./env.js";
+import { parseAppEnv, parsePanelHost, parsePort } from "./env.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -13,7 +13,6 @@ export const config = {
   appEnv,
   apiPort: parsePort(process.env.API_PORT),
   panelDir: process.env.PANEL_DIR || null,
-  panelCredentials: parsePanelCredentials(process.env.PANEL_USER, process.env.PANEL_PASSWORD),
   panelHost: parsePanelHost(process.env.PANEL_HOST),
   databasePath: process.env.DATABASE_PATH ?? `./data/${appEnv}.sqlite`,
 } as const;

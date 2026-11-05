@@ -113,6 +113,16 @@ export const MIGRATIONS: string[] = [
     token_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
   ) STRICT;
   `,
+  `
+  CREATE TABLE panel_account (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    must_change_password INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+  DELETE FROM panel_sessions;
+  `,
 ];
 
 export function openDatabase(path: string): Db {

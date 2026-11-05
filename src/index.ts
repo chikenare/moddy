@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import { createApi } from "./api/app.js";
 import { createPhotoFetcher } from "./api/photos.js";
 import { startApiServer } from "./api/server.js";
+import { createInitialAccount, describeNewPassword } from "./auth/account.js";
 import { purgeSessions } from "./auth/session.js";
 import { createAutoRepliesHandler } from "./community/auto-replies.js";
 import { createRulesHandler } from "./community/rules.js";
@@ -24,6 +25,8 @@ import { stripRequestDetails } from "./telegram-errors.js";
 const bot = new Bot(config.botToken);
 bot.api.config.use(stripRequestDetails(config.botToken));
 const db = openDatabase(config.databasePath);
+const initialPassword = createInitialAccount(db, Date.now());
+if (initialPassword) console.log(describeNewPassword(initialPassword));
 const flood = new FloodTracker();
 const stats = createStatsCollector({ db });
 const enforcer = createEnforcer({ api: bot.api, db, appEnv: config.appEnv, stats });
@@ -72,7 +75,6 @@ const api = createApi({
   fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
   panelDir: config.panelDir,
   panelHost: config.panelHost,
-  credentials: config.panelCredentials,
 });
 const server = startApiServer(api.fetch, config.apiPort);
 

@@ -58,6 +58,11 @@ export interface Metrics {
   topChats: Array<{ id: number; title: string; messages: number; actions: number }>;
 }
 
+export interface SessionState {
+  authenticated: boolean;
+  mustChangePassword: boolean;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -85,7 +90,8 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     throw new ApiError(0, "Could not connect to the server");
   }
   if (!res.ok) {
-    if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized?.();
+    // At login a 401 only means a wrong password. Anywhere else the session has ended.
+    if (res.status === 401 && path !== "/auth/login") onUnauthorized?.();
     let message = `Error ${res.status}`;
     try {
       const data = await res.json();
@@ -101,9 +107,11 @@ const chat = (id: number) => `/chats/${id}`;
 
 export const api = {
   // The page only appears after this answers, so a stalled tunnel must not leave it blank.
-  session: () => request<{ authenticated: boolean }>("GET", "/auth/session", undefined, AbortSignal.timeout(5000)),
-  login: (username: string, password: string) => request<{ authenticated: boolean }>("POST", "/auth/login", { username, password }),
+  session: () => request<SessionState>("GET", "/auth/session", undefined, AbortSignal.timeout(5000)),
+  login: (username: string, password: string) => request<SessionState>("POST", "/auth/login", { username, password }),
   logout: () => request<void>("POST", "/auth/logout"),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<SessionState>("POST", "/auth/password", { currentPassword, newPassword }),
   info: () => request<{ appEnv: "development" | "production"; botUsername: string | null }>("GET", "/info"),
   metrics: (days: number, chatId?: number) =>
     request<Metrics>("GET", `/metrics?days=${days}${chatId === undefined ? "" : `&chatId=${chatId}`}`),
