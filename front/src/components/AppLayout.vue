@@ -36,7 +36,7 @@ async function logout() {
         <div class="flex items-center gap-2.5 px-1">
           <BotLogo class="size-8 shrink-0" />
           <div class="leading-tight">
-            <div class="text-sm font-semibold">Moderation</div>
+            <div class="text-sm font-semibold">Moddy</div>
             <div class="text-xs text-muted-foreground">Telegram groups</div>
           </div>
         </div>

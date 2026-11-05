@@ -41,7 +41,7 @@ bot.use(createAutoRepliesHandler({ db, stats }));
 const privateChat = bot.chatType("private");
 
 privateChat.command("start", (ctx) =>
-  ctx.reply(`Hi, ${ctx.from?.first_name ?? "there"}! 👋 I'm a group moderation bot.`),
+  ctx.reply(`Hi, ${ctx.from?.first_name ?? "there"}! 👋 I'm Moddy, a group moderation bot.`),
 );
 
 privateChat.command("help", (ctx) => ctx.reply("Available commands:\n/help - Show this help"));

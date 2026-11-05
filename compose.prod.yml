@@ -3,7 +3,7 @@
 # The first start creates the panel user admin and prints its password once in the logs: look for "Panel login".
 services:
   bot:
-    image: registry.delirio.org/chiken/telegram-bot:${IMAGE_TAG:-latest}
+    image: registry.delirio.org/chiken/moddy:${IMAGE_TAG:-latest}
     environment:
       # A missing value stops the deploy before it replaces a working bot.
       BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}

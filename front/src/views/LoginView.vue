@@ -41,7 +41,7 @@ async function submit() {
       <div class="flex flex-col items-center gap-3 text-center">
         <BotLogo class="size-16" />
         <div>
-          <h1 class="text-xl font-semibold tracking-tight">Moderation</h1>
+          <h1 class="text-xl font-semibold tracking-tight">Moddy</h1>
           <p class="text-sm text-muted-foreground">Log in to manage your Telegram groups</p>
         </div>
       </div>
