@@ -16,6 +16,32 @@ test.each([
   expect(findBannedWord(text, words)).toBe(expected);
 });
 
+test.each([
+  ["xdxdxd", ["xd"]],
+  ["XDXDXD", ["xd"]],
+  ["xdxd", ["xd"]],
+  ["jaja xdxdxd ok", ["xd"]],
+  ["xdddxddd", ["xd"]],
+  ["putaputa", ["puta"]],
+  ["¡PUTAAAPUTAAA!", ["puta"]],
+])("a word repeated with nothing between counts: %s", (text, words) => {
+  expect(findBannedWord(text, words)).toBe(words[0]);
+});
+
+test.each([
+  ["sexdrive", ["xd"]],
+  ["xdcc", ["xd"]],
+  ["axd", ["xd"]],
+  ["xdxdz", ["xd"]],
+  ["zxdxd", ["xd"]],
+  ["xdxd1", ["xd"]],
+  ["xd1xd", ["xd"]],
+  ["computadora", ["puta"]],
+  ["disputaputa", ["puta"]],
+])("a word glued to anything else still does not count: %s", (text, words) => {
+  expect(findBannedWord(text, words)).toBeUndefined();
+});
+
 test("normalizeWord", () => {
   expect(normalizeWord("  Coño ")).toBe("coño");
   expect(normalizeWord("   ")).toBeNull();

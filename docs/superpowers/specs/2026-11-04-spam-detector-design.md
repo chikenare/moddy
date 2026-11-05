@@ -118,6 +118,7 @@ El bot debe ser admin del grupo con `can_delete_messages` y `can_restrict_member
 **Palabras**
 
 - Coincidencia por palabra completa, nunca por subcadena. Se admiten frases.
+- Una palabra repetida sin nada en medio también cuenta (`xd` coincide con `xdxdxd`, pero no con `sexdrive`). A cambio, una palabra muy corta como `pa` también coincidiría con `papa`.
 - Se ignoran mayúsculas y acentos, pero **se conserva la `ñ`**.
 - Las repeticiones de 3 o más letras se reducen a una (`putaaaa` coincide con `puta`).
 - La misma normalización se aplica a la lista y al mensaje.

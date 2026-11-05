@@ -8,7 +8,8 @@ function escapeRegExp(value: string): string {
 export function findBannedWord(text: string, words: string[]): string | undefined {
   const normalized = normalizeText(text);
   return words.find((word) =>
-    new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(word)}(?![\\p{L}\\p{N}])`, "u").test(normalized),
+    // Whole words only, but a word repeated with nothing between counts: "xd" matches "xdxdxd", not "sexdrive".
+    new RegExp(`(?<![\\p{L}\\p{N}])(?:${escapeRegExp(word)})+(?![\\p{L}\\p{N}])`, "u").test(normalized),
   );
 }
 
