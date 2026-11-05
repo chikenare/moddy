@@ -138,6 +138,8 @@ export function createApi(deps: {
     } catch {
       return { response: fail(c, 400, "Malformed JSON") };
     }
+    const revoked = auth.refuseIfRevoked(c);
+    if (revoked) return { response: revoked };
     const parsed = schema.safeParse(raw);
     if (!parsed.success) return { response: fail(c, 400, describeIssue(parsed.error.issues[0]!)) };
     return { data: parsed.data };

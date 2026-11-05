@@ -90,8 +90,9 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     throw new ApiError(0, "Could not connect to the server");
   }
   if (!res.ok) {
-    // At login a 401 only means a wrong password. Anywhere else the session has ended.
-    if (res.status === 401 && path !== "/auth/login") onUnauthorized?.();
+    // At login a 401 only means a wrong password. The session check never sends one, so it can only come from
+    // something in between, and reloading would just ask again. Anywhere else the session has ended.
+    if (res.status === 401 && path !== "/auth/login" && path !== "/auth/session") onUnauthorized?.();
     let message = `Error ${res.status}`;
     try {
       const data = await res.json();

@@ -60,6 +60,11 @@ test.each([
   ['the login page with a query', '/login?next=/messages'],
   ['the password page', '/change-password'],
   ['the password page with a query', '/change-password?next=/groups'],
+  ['the login page in capitals', '/LOGIN?expired=1'],
+  ['the login page with a slash', '/login/'],
+  ['the login page with a fragment', '/login#top'],
+  ['the password page in capitals', '/CHANGE-PASSWORD'],
+  ['the password page with a slash', '/change-password/?next=/groups'],
 ])('goes home for %s', (_name, next) => {
   expect(safeNext(next)).toBe('/')
 })

@@ -17,20 +17,22 @@ const changeBody = z.object({ currentPassword: z.string(), newPassword: z.string
 
 export function createAuth(deps: { db: Db; now: () => number }) {
   const { db, now } = deps;
-  const limiter = new LoginLimiter(now);
+  // Separate, or anyone failing at the public login could stop the owner changing a password.
+  const loginLimiter = new LoginLimiter(now);
+  const changeLimiter = new LoginLimiter(now);
   const limitBody = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ error: "Invalid request" }, 400) });
 
   const authenticated = (c: Context) => getPanelAccount(db) !== undefined && isValidSession(db, getCookie(c, COOKIE), now());
 
-  const refuseIfLocked = (c: Context) => {
+  const refuseIfLocked = (c: Context, limiter: LoginLimiter) => {
     const retryAfter = limiter.retryAfterSeconds();
     if (retryAfter === 0) return null;
     const minutes = Math.ceil(retryAfter / 60);
     c.header("Retry-After", String(retryAfter));
     return c.json({ error: `Too many attempts. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.` }, 429);
   };
-  const countFailure = () => {
-    if (limiter.recordFailure()) console.warn("Panel login is locked after too many failed attempts. Restarting the bot clears the lock.");
+  const countFailure = (limiter: LoginLimiter, what: string) => {
+    if (limiter.recordFailure()) console.warn(`${what} locked after too many failed attempts. Restarting the bot clears the lock.`);
   };
   const startSession = (c: Context) => setCookie(c, COOKIE, createSession(db, now()), {
     httpOnly: true,
@@ -46,15 +48,15 @@ export function createAuth(deps: { db: Db; now: () => number }) {
     const body = loginBody.safeParse(await c.req.json().catch(() => null));
 
     // Nothing may wait from here on: a guess whose body arrived late must still see every earlier failure.
-    const locked = refuseIfLocked(c);
+    const locked = refuseIfLocked(c, loginLimiter);
     if (locked) return locked;
     if (!body.success) return c.json({ error: "Invalid request" }, 400);
     const account = getPanelAccount(db);
     if (!credentialsMatch(account, body.data.username, body.data.password)) {
-      countFailure();
+      countFailure(loginLimiter, "Panel login is");
       return c.json({ error: "Wrong username or password" }, 401);
     }
-    limiter.reset();
+    loginLimiter.reset();
     startSession(c);
     return c.json({ authenticated: true, mustChangePassword: account!.mustChangePassword });
   });
@@ -63,18 +65,21 @@ export function createAuth(deps: { db: Db; now: () => number }) {
     const body = changeBody.safeParse(await c.req.json().catch(() => null));
 
     // Nothing may wait from here on, as in the login: this also tests guesses at the password.
-    const locked = refuseIfLocked(c);
+    if (!authenticated(c)) return c.json({ error: "Not logged in" }, 401);
+    const locked = refuseIfLocked(c, changeLimiter);
     if (locked) return locked;
     if (!body.success) return c.json({ error: "Invalid request" }, 400);
     const account = getPanelAccount(db)!;
     if (!verifyPassword(account.passwordHash, body.data.currentPassword)) {
-      countFailure();
+      countFailure(changeLimiter, "Panel password changes are");
       return c.json({ error: "The current password is wrong" }, 400);
     }
-    limiter.reset();
+    changeLimiter.reset();
     const problem = passwordProblem(body.data.newPassword, body.data.currentPassword);
     if (problem) return c.json({ error: problem }, 400);
-    changeAccountPassword(db, body.data.newPassword, now());
+    if (!changeAccountPassword(db, account.passwordHash, body.data.newPassword, now())) {
+      return c.json({ error: "The password was changed by something else. Log in again." }, 409);
+    }
     // Every session just ended, including this one, so this browser gets a new one.
     startSession(c);
     return c.json({ authenticated: true, mustChangePassword: false });
@@ -103,5 +108,12 @@ export function createAuth(deps: { db: Db; now: () => number }) {
     await next();
   };
 
-  return { routes, requireSession };
+  // For handlers that wait for a body: the session may have ended, or the account been reset, while it arrived.
+  const refuseIfRevoked = (c: Context) => {
+    if (!authenticated(c)) return c.json({ error: "Not logged in" }, 401);
+    if (getPanelAccount(db)!.mustChangePassword) return c.json({ error: "Change the initial password first" }, 403);
+    return null;
+  };
+
+  return { routes, requireSession, refuseIfRevoked };
 }

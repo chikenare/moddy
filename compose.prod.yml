@@ -1,6 +1,8 @@
 # For Dokploy: set the variables below in the Environment tab and, in the Domains tab,
 # point PANEL_HOST at this service on port 3000 with HTTPS on.
 # The first start creates the panel user admin and prints its password once in the logs: look for "Panel login".
+# The account lives in the volume, so a replaced container keeps it but loses that line. If you lose the password,
+# run this in the container: node dist/scripts/reset-panel-password.js
 services:
   bot:
     image: registry.delirio.org/chiken/moddy:${IMAGE_TAG:-latest}

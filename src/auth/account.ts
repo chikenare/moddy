@@ -79,7 +79,13 @@ function replaceWithGeneratedPassword(db: Db, nowMs: number, cost?: ScryptCost):
 
 // Returns the password only when it creates the account: it cannot be recovered later.
 export function createInitialAccount(db: Db, nowMs: number, cost?: ScryptCost): string | null {
-  return getPanelAccount(db) ? null : replaceWithGeneratedPassword(db, nowMs, cost);
+  if (getPanelAccount(db)) return null;
+  const password = generatePassword();
+  const { changes } = db.prepare(`
+    INSERT INTO panel_account (id, username, password_hash, must_change_password, updated_at) VALUES (1, ?, ?, 1, ?)
+    ON CONFLICT (id) DO NOTHING
+  `).run(PANEL_USERNAME, hashPassword(password, cost), Math.floor(nowMs / 1000));
+  return changes === 1 ? password : null;
 }
 
 export function resetAccountPassword(db: Db, nowMs: number, cost?: ScryptCost): string {
@@ -90,17 +96,35 @@ export function describeNewPassword(password: string): string {
   return `Panel login: username ${PANEL_USERNAME}, password ${password} . It is shown only this once, and the panel asks you to change it after you log in.`;
 }
 
+// The panel is public and its username is known, so these are the first guesses anyone would try.
+const COMMON_WORDS = new Set([
+  "password", "passwords", "passw", "contrasena", "clave", "admin", "adminadmin", "administrator", "qwerty", "qwertyuiop",
+  "asdfgh", "letmein", "welcome", "iloveyou", "moddy", "telegram",
+]);
+
+function isCommon(password: string): boolean {
+  const lower = password.toLowerCase();
+  if (new Set(lower).size < 5 || /^\d+$/.test(lower)) return true;
+  return COMMON_WORDS.has(lower.normalize("NFD").replace(/[^a-z]/g, ""));
+}
+
 export function passwordProblem(password: string, current: string): string | null {
   if (password.trim().length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters.`;
   if (password.length > MAX_PASSWORD) return `Use at most ${MAX_PASSWORD} characters.`;
   if (password === current) return "Choose a different password.";
+  if (isCommon(password)) return "Choose a less common password.";
   return null;
 }
 
-export function changeAccountPassword(db: Db, password: string, nowMs: number, cost?: ScryptCost): void {
+// Writes only if the password is still the one the caller verified: hashing takes a moment, and the reset script
+// runs in another process. Otherwise someone with a session could undo a reset. Returns whether it changed.
+export function changeAccountPassword(db: Db, verifiedHash: string, password: string, nowMs: number, cost?: ScryptCost): boolean {
   const passwordHash = hashPassword(password, cost);
-  db.transaction(() => {
-    saveAccount(db, { username: getPanelAccount(db)?.username ?? PANEL_USERNAME, passwordHash, mustChangePassword: false }, nowMs);
+  return db.transaction(() => {
+    const { changes } = db.prepare("UPDATE panel_account SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = 1 AND password_hash = ?")
+      .run(passwordHash, Math.floor(nowMs / 1000), verifiedHash);
+    if (changes === 0) return false;
     deleteAllSessions(db);
+    return true;
   })();
 }

@@ -1,7 +1,7 @@
 const MAX_FAILURES = 10;
 const WINDOW_MS = 15 * 60_000;
 
-// Global, not per IP: behind a tunnel or proxy every request shares one address, and there is only one account.
+// Global, not per IP: behind a proxy the address can't be trusted without more setup, and there is only one account.
 export class LoginLimiter {
   private failures: number[] = [];
   private readonly now: () => number;

@@ -3,7 +3,8 @@ export const CHANGE_PASSWORD_PATH = "/change-password";
 // Where to go after logging in. Only paths inside the panel, so a crafted link can't send the owner elsewhere.
 export function safeNext(next: unknown): string {
   if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
-  const path = next.split("?")[0];
+  // The router ignores case and a trailing slash, so these must too.
+  const path = next.split(/[?#]/)[0]!.replace(/\/+$/, "").toLowerCase();
   return path === "/login" || path === CHANGE_PASSWORD_PATH ? "/" : next;
 }
 

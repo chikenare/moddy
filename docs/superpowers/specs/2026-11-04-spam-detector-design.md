@@ -46,7 +46,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 - Flood: 5 mensajes iguales o similares en 10 segundos, configurable.
 - SQLite.
 - Frontend con Vue, shadcn (shadcn-vue en Vue) y Pinia, en la carpeta `front/`.
-- El panel tiene login con usuario y contraseña, definidos en `.env`.
+- El panel tiene login con un usuario por defecto y contraseña aleatoria, que se cambia desde el propio panel.
 - Grupos y canales con configuración separada.
 - Todo se ejecuta con Docker.
 - En desarrollo el panel se abre en `http://bot.localhost`, por el Traefik que ya está corriendo y solo por HTTP.
@@ -67,8 +67,8 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 | Canales sin filtros (ver "Canales") | En un canal solo publican admins |
 | Conducta de `APP_ENV` (ver abajo) | El dueño pidió que difiera; la diferencia concreta la propone este diseño |
 | Historial con retención de 90 días y texto truncado a 1000 caracteres; los bans vigentes se conservan sin texto | Permite auditar sin guardar mensajes para siempre, y un ban antiguo sigue pudiéndose deshacer desde el panel |
-| Acceso al panel en producción por dominio con HTTPS, detrás del Traefik de Dokploy | Queda expuesto a internet protegido solo por el login; por eso exige `PANEL_HOST` y una contraseña larga y aleatoria |
-| Login con usuario y contraseña en `.env`, no con Telegram | Un solo dueño; no depende del bot ni de conocer su ID de Telegram |
+| Acceso al panel en producción por dominio con HTTPS, detrás del Traefik de Dokploy | Queda expuesto a internet protegido solo por el login; por eso exige `PANEL_HOST`, obliga a cambiar la contraseña inicial y rechaza las más comunes |
+| Login con usuario y contraseña guardados en SQLite, no en `.env` ni con Telegram | Un solo dueño; un error de configuración no para la moderación, y no depende de conocer su ID de Telegram |
 | Se quita todo el flujo de compra (`/planes`, `/terms`, `/paysupport`, `/refund`), no solo la llamada a la API. El proyecto `playhubplus-api` no se modifica | Sin esa API no hay planes que vender. Sigue recuperable desde git |
 | Nombre neutro `telegram-bot` para paquete y proyecto de Docker | El dueño quitó la marca sin indicar otro nombre; textos del bot sin marca |
 
@@ -256,18 +256,19 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. P
 
 ## Acceso, login y despliegue
 
-**Login.** El primer arranque crea el usuario `admin` con una contraseña aleatoria y la muestra una sola vez en los logs, en la línea `Panel login`. En ese estado el servidor solo admite cambiarla: el resto de la API responde 403, y el panel lleva a `/change-password`. Después se cambia desde el panel (pide la actual, mínimo 12 y máximo 256 caracteres), y si se pierde, `node dist/scripts/reset-panel-password.js` dentro del contenedor genera otra, también de cambio obligatorio. No hay credenciales en el entorno, así que un error ahí no impide arrancar al bot ni para la moderación.
+**Login.** El primer arranque crea el usuario `admin` con una contraseña aleatoria y la muestra una sola vez en los logs, en la línea `Panel login`. En ese estado el servidor solo admite cambiarla: el resto de la API responde 403, y el panel lleva a `/change-password`. Después se cambia desde el panel (pide la actual, de 12 a 256 caracteres, sin repeticiones ni palabras comunes como `password1234`), y si se pierde, `node dist/scripts/reset-panel-password.js` dentro del contenedor genera otra, también de cambio obligatorio. No hay credenciales en el entorno, así que un error ahí no impide arrancar al bot ni para la moderación.
 
 Toda la API exige sesión salvo `GET /api/health`, `GET /api/auth/session`, `POST /api/auth/login` y `POST /api/auth/logout`, con denegación por defecto y una prueba que recorre todas las rutas; los archivos del panel son públicos para poder mostrar el login. La sesión es la cookie `panel_session`, `HttpOnly`, `SameSite=Strict`, y `Secure` detrás de HTTPS, de 30 días. Cerrar sesión la termina en el servidor; cambiar o restablecer la contraseña termina todas, y el navegador que la cambia recibe una nueva.
 
-SQLite guarda la contraseña como hash scrypt con sal propia (N=2^17, r=8, p=1, lo que recomienda OWASP) y el SHA-256 del token de cada sesión. Una copia de la base no permite usar sesiones, pero sí probar contraseñas sin conexión, y por eso se exige un mínimo de 12 caracteres y conviene proteger los respaldos. El hash se calcula de forma síncrona y bloquea el proceso unos cientos de milisegundos, lo que el límite de intentos mantiene acotado.
+SQLite guarda la contraseña como hash scrypt con sal propia (N=2^17, r=8, p=1, lo que recomienda OWASP) y el SHA-256 del token de cada sesión. Una copia de la base no permite usar sesiones, pero sí probar contraseñas sin conexión, y por eso se exige un mínimo de 12 caracteres y conviene proteger los respaldos. El hash se calcula de forma síncrona, bloquea el proceso unos 270 ms y usa 128 MB, así que el contenedor necesita al menos 192 MB; el límite de intentos lo acota a 10 cada 15 minutos. Un cambio de contraseña solo se guarda si la contraseña sigue siendo la que comprobó, para que no deshaga un restablecimiento hecho mientras tanto (responde 409).
 
-Tras 10 intentos fallidos en 15 minutos, contando el login y la contraseña actual al cambiarla, se bloquean ambos para todos durante ese tiempo, sin afectar a las sesiones abiertas. El cuerpo se lee antes de comprobar el límite, y la comprobación y el registro del fallo no ceden el control, así que un intento retenido a medio enviar también cuenta. El cuerpo de estas peticiones admite como máximo 4 KB. El inicio del bloqueo se registra en el log sin credenciales.
+Tras 10 intentos fallidos de login en 15 minutos, el login se bloquea para todos durante ese tiempo, sin afectar a las sesiones abiertas. Cambiar la contraseña tiene su propio contador con el mismo límite, para que nadie desde fuera pueda impedírselo al dueño. El cuerpo se lee antes de comprobar el límite, y la comprobación y el registro del fallo no ceden el control, así que un intento retenido a medio enviar también cuenta. El cuerpo de estas peticiones admite como máximo 4 KB. El inicio del bloqueo se registra en el log sin credenciales. Las escrituras vuelven a comprobar la sesión al recibir el cuerpo, porque pudo terminar mientras llegaba.
 
 Límites conocidos del login:
 
 - Con un dominio público, cualquiera en internet puede mantener el login bloqueado con 10 peticiones cada 15 minutos. No puede entrar ni afecta a las sesiones abiertas, y reiniciar el bot borra el bloqueo.
-- Hasta el primer inicio de sesión, quien pueda leer los logs tiene la contraseña inicial. Basta con cambiarla nada más desplegar.
+- Hasta el primer inicio de sesión, quien pueda leer los logs tiene la contraseña inicial. Basta con cambiarla nada más desplegar. Reemplazar el contenedor pierde esa línea del log, pero la cuenta sigue en el volumen, así que hay que usar el script.
+- El script solo funciona dentro del contenedor, y no borra un bloqueo del login: para eso hay que reiniciar o esperar.
 - Solo hay una cuenta, y su usuario no se puede cambiar.
 
 En desarrollo la API no publica ningún puerto: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`. En producción, el mismo proceso sirve la API y el panel.

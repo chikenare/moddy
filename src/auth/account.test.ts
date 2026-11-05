@@ -32,12 +32,31 @@ test("two hashes of the same password differ, because each has its own salt", ()
   expect(hashPassword("correct horse battery", FAST)).not.toBe(hashPassword("correct horse battery", FAST));
 });
 
-test.each(["", "nonsense", "scrypt$2$1$1$", "bcrypt$2$1$1$c2FsdA$aGFzaA", "scrypt$3$1$1$c2FsdA$aGFzaA", "scrypt$2$1$1$c2FsdA$aGFzaA"])(
-  "a stored value %j that cannot be checked refuses every password",
-  (stored) => {
-    expect(verifyPassword(stored, "correct horse battery")).toBe(false);
-  },
-);
+const WHOLE_HASH = Buffer.alloc(32, 1).toString("base64url");
+
+test.each([
+  "", "nonsense", "scrypt$2$1$1$", "bcrypt$2$1$1$c2FsdA$aGFzaA", "scrypt$3$1$1$c2FsdA$aGFzaA", "scrypt$2$1$1$c2FsdA$aGFzaA",
+  `bcrypt$2$1$1$c2FsdA$${WHOLE_HASH}`, `scrypt$3$1$1$c2FsdA$${WHOLE_HASH}`, `scrypt$x$1$1$c2FsdA$${WHOLE_HASH}`, `scrypt$2$1$1$$${WHOLE_HASH}`,
+])("a stored value %j that cannot be checked refuses every password", (stored) => {
+  expect(verifyPassword(stored, "correct horse battery")).toBe(false);
+});
+
+test("a real hash under another scheme refuses the right password", () => {
+  const stored = hashPassword("correct horse battery", FAST);
+  expect(verifyPassword(stored.replace("scrypt", "bcrypt"), "correct horse battery")).toBe(false);
+});
+
+test("changing any end of the hash refuses the right password", () => {
+  const stored = hashPassword("correct horse battery", FAST);
+  const parts = stored.split("$");
+  const hash = Buffer.from(parts[5]!, "base64url");
+  for (const index of [0, hash.length - 1]) {
+    const changed = Buffer.from(hash);
+    changed[index]! ^= 1;
+    parts[5] = changed.toString("base64url");
+    expect(verifyPassword(parts.join("$"), "correct horse battery")).toBe(false);
+  }
+});
 
 test("the first start creates admin with a random password that must be changed", () => {
   const password = createInitialAccount(db, NOW, FAST)!;
@@ -91,19 +110,38 @@ test.each([
   expect(passwordProblem(password, "correct horse battery")).toMatch(message);
 });
 
-test.each(["twelve chars", "b".repeat(256)])("a new password %j is accepted", (password) => {
+test.each(["aaaaaaaaaaaa", "aabbaabbaabb", "password1234", "Password-1234", "adminadmin12", "qwerty123456", "123456789012"])(
+  "a new password %j is too common",
+  (password) => {
+    expect(passwordProblem(password, "correct horse battery")).toBe("Choose a less common password.");
+  },
+);
+
+test.each(["twelve chars", "abcde".repeat(51) + "a", "a brand new password", "0123456789abcdef"])("a new password %j is accepted", (password) => {
   expect(passwordProblem(password, "correct horse battery")).toBeNull();
 });
 
 test("changing the password replaces it, clears the flag and ends every session", () => {
   createInitialAccount(db, NOW, FAST);
   const session = createSession(db, NOW);
-  changeAccountPassword(db, "a brand new password", NOW, FAST);
+  expect(changeAccountPassword(db, getPanelAccount(db)!.passwordHash, "a brand new password", NOW, FAST)).toBe(true);
   const account = getPanelAccount(db)!;
   expect(account.mustChangePassword).toBe(false);
   expect(account.username).toBe("admin");
   expect(verifyPassword(account.passwordHash, "a brand new password")).toBe(true);
   expect(isValidSession(db, session, NOW)).toBe(false);
+});
+
+test("a change based on a password that was replaced meanwhile changes nothing", () => {
+  saveAccount(db, { username: "admin", passwordHash: hashPassword("correct horse battery", FAST), mustChangePassword: false }, NOW);
+  const verified = getPanelAccount(db)!.passwordHash;
+  const reset = resetAccountPassword(db, NOW, FAST);
+  const session = createSession(db, NOW);
+  expect(changeAccountPassword(db, verified, "a brand new password", NOW, FAST)).toBe(false);
+  const account = getPanelAccount(db)!;
+  expect(verifyPassword(account.passwordHash, reset)).toBe(true);
+  expect(account.mustChangePassword).toBe(true);
+  expect(isValidSession(db, session, NOW)).toBe(true);
 });
 
 test("resetting gives a new random password that must be changed, and ends every session", () => {

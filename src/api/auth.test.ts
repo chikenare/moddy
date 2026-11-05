@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
-import { getPanelAccount, hashPassword, saveAccount, verifyPassword } from "../auth/account.js";
-import { insertChat } from "../db/chats.js";
+import { getPanelAccount, hashPassword, resetAccountPassword, saveAccount, verifyPassword } from "../auth/account.js";
+import { getChat, insertChat } from "../db/chats.js";
 import { type Db, openDatabase } from "../db/connection.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
@@ -50,18 +50,23 @@ const asSession = (cookie: string) => ({ Cookie: cookie });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 // A request whose headers have arrived but whose body has not, as a slow or deliberate client would send it.
-function held(path: string, body: unknown, headers: Record<string, string> = {}) {
+function held(path: string, body: unknown, headers: Record<string, string> = {}, method = "POST") {
   let release!: () => void;
+  const payload = new TextEncoder().encode(JSON.stringify(body));
   const stream = new ReadableStream({
     start(controller) {
       release = () => {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+        controller.enqueue(payload);
         controller.close();
       };
     },
   });
+  // A declared size is what real clients send, and it makes the handler itself wait for the body.
   const request = new Request(`http://ignored${path}`, {
-    method: "POST", headers: { Host: "bot.localhost", "Content-Type": "application/json", ...headers }, body: stream, duplex: "half",
+    method,
+    headers: { Host: "bot.localhost", "Content-Type": "application/json", "Content-Length": String(payload.length), ...headers },
+    body: stream,
+    duplex: "half",
   } as RequestInit);
   return { response: Promise.resolve(app.request(request)), release: () => release() };
 }
@@ -153,6 +158,7 @@ test("while the initial password is unchanged, every route but changing it and t
   expect(await r.json()).toEqual({ authenticated: true, mustChangePassword: true });
   const session = asSession(cookieOf(r));
   expect(await (await send("GET", "/api/auth/session", undefined, session)).json()).toEqual({ authenticated: true, mustChangePassword: true });
+  expect(await (await send("GET", "/api/auth/session")).json()).toEqual({ authenticated: false, mustChangePassword: false });
 
   const ALLOWED = new Set(["GET /api/health", "GET /api/auth/session", "POST /api/auth/login", "POST /api/auth/logout", "POST /api/auth/password"]);
   const routes = app.routes.filter((route) => route.method !== "ALL" && !ALLOWED.has(`${route.method} ${route.path}`));
@@ -232,7 +238,7 @@ test.each([
   expect((await send("GET", "/api/chats", undefined, session)).status).toBe(200);
 });
 
-test("a wrong current password changes nothing and counts toward the limit", async () => {
+test("a wrong current password changes nothing and locks further changes, but not the login", async () => {
   const session = asSession(cookieOf(await login()));
   for (let i = 0; i < 10; i++) {
     const r = await changePassword(session, "wrong guess", "a brand new password");
@@ -240,18 +246,78 @@ test("a wrong current password changes nothing and counts toward the limit", asy
     expect(await r.json()).toEqual({ error: "The current password is wrong" });
   }
   expect((await changePassword(session, PASSWORD, "a brand new password")).status).toBe(429);
-  expect((await login()).status).toBe(429);
   expect(verifyPassword(getPanelAccount(db)!.passwordHash, PASSWORD)).toBe(true);
+  expect((await login()).status).toBe(200);
 });
 
-test("a change held open across the lockout is blocked when its body arrives", async () => {
+test("anyone failing at the login cannot stop the owner changing a password", async () => {
+  account(PASSWORD, true);
+  const session = asSession(cookieOf(await login()));
+  for (let i = 0; i < 10; i++) expect((await login(USER, "wrong")).status).toBe(401);
+  expect((await login()).status).toBe(429);
+  expect((await changePassword(session, PASSWORD, "a brand new password")).status).toBe(200);
+});
+
+test("a change held open across its lockout is blocked when its body arrives", async () => {
   const session = asSession(cookieOf(await login()));
   const change = held("/api/auth/password", { currentPassword: PASSWORD, newPassword: "a brand new password" }, session);
   await tick();
-  for (let i = 0; i < 10; i++) await login(USER, "wrong");
+  for (let i = 0; i < 10; i++) await changePassword(session, "wrong guess", "a brand new password");
   change.release();
   expect((await change.response).status).toBe(429);
   expect(verifyPassword(getPanelAccount(db)!.passwordHash, PASSWORD)).toBe(true);
+});
+
+test("guesses at the current password delivered together are counted one by one", async () => {
+  const session = asSession(cookieOf(await login()));
+  const guesses = Array.from({ length: 30 }, (_, i) => held(
+    "/api/auth/password",
+    { currentPassword: i === 25 ? PASSWORD : "wrong guess", newPassword: "a brand new password" },
+    session,
+  ));
+  await tick();
+  for (const guess of guesses) guess.release();
+  const statuses = await Promise.all(guesses.map(async (guess) => (await guess.response).status));
+  expect(statuses.filter((s) => s === 400)).toHaveLength(10);
+  expect(statuses.filter((s) => s === 429)).toHaveLength(20);
+  expect(verifyPassword(getPanelAccount(db)!.passwordHash, PASSWORD)).toBe(true);
+});
+
+test("a change held open is refused if the session ended before its body arrived", async () => {
+  const session = asSession(cookieOf(await login()));
+  const change = held("/api/auth/password", { currentPassword: PASSWORD, newPassword: "a brand new password" }, session);
+  await tick();
+  db.exec("DELETE FROM panel_sessions");
+  change.release();
+  expect((await change.response).status).toBe(401);
+  expect(verifyPassword(getPanelAccount(db)!.passwordHash, PASSWORD)).toBe(true);
+});
+
+test("a write held open is refused if a reset ended the session before its body arrived", async () => {
+  const session = asSession(cookieOf(await login()));
+  const write = held(`/api/chats/${CHAT}`, { floodCount: 7 }, session, "PATCH");
+  await tick();
+  resetAccountPassword(db, clock, FAST);
+  write.release();
+  expect((await write.response).status).toBe(401);
+  expect(getChat(db, CHAT)!.floodCount).toBe(5);
+});
+
+test("a write held open is refused if the password must be changed by the time its body arrives", async () => {
+  const session = asSession(cookieOf(await login()));
+  const write = held(`/api/chats/${CHAT}`, { floodCount: 7 }, session, "PATCH");
+  await tick();
+  account(PASSWORD, true);
+  write.release();
+  expect((await write.response).status).toBe(403);
+  expect(getChat(db, CHAT)!.floodCount).toBe(5);
+});
+
+test.each(["aaaaaaaaaaaa", "password1234", "adminadmin12", "123456789012"])("a weak new password %j is refused", async (newPassword) => {
+  const session = asSession(cookieOf(await login()));
+  const r = await changePassword(session, PASSWORD, newPassword);
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error: "Choose a less common password." });
 });
 
 test("after 10 failures logins are blocked for 15 minutes, even with the right password", async () => {
@@ -309,7 +375,9 @@ test.each([
 test("a change body over the limit gives 400", async () => {
   const session = asSession(cookieOf(await login()));
   const huge = JSON.stringify({ currentPassword: PASSWORD, newPassword: "x".repeat(5000) });
-  expect((await send("POST", "/api/auth/password", huge, session)).status).toBe(400);
+  const r = await send("POST", "/api/auth/password", huge, session);
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error: "Invalid request" });
 });
 
 test("a good login clears the failure count, and a live session keeps working while blocked", async () => {
@@ -389,12 +457,12 @@ test("without a session, a chat route says nothing about whether the chat exists
 });
 
 test("the longest password allowed fits in a login and in a change", async () => {
-  const longest = "\u0001".repeat(256);
+  const longest = `${"\u0001\u0002\u0003\u0004\u0005".repeat(51)}\u0001`;
   account(longest);
   const r = await login(USER, longest);
   expect(JSON.stringify({ username: USER, password: longest }).length).toBeGreaterThan(1500);
   expect(r.status).toBe(200);
-  const other = "\u0002".repeat(256);
+  const other = `${"\u0006\u0007\u000b\u000e\u000f".repeat(51)}\u0006`;
   expect(JSON.stringify({ currentPassword: longest, newPassword: other }).length).toBeGreaterThan(3000);
   expect((await changePassword(asSession(cookieOf(r)), longest, other)).status).toBe(200);
 });
