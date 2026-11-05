@@ -2,10 +2,12 @@ import type { Db } from "./connection.js";
 import type { FilterAction } from "./chats.js";
 
 export type FilterName = "link" | "word" | "flood" | "bot";
+export type EventSource = FilterName | "command";
+export type EventAction = FilterAction | "warn" | "unban";
 export type SenderType = "user" | "chat";
 export interface EventRecord {
   id: number; chatId: number; senderType: SenderType; senderId: number; senderName: string;
-  filter: FilterName; matched: string; text: string | null; action: FilterAction;
+  filter: EventSource; matched: string; text: string | null; action: EventAction;
   deleteOk: boolean | null; banOk: boolean | null; error: string | null;
   dryRun: boolean; unbannedAt: number | null; createdAt: number;
 }
@@ -22,8 +24,8 @@ function toRecord(r: Row): EventRecord {
   return {
     id: r.id as number, chatId: r.chat_id as number,
     senderType: r.sender_type as SenderType, senderId: r.sender_id as number, senderName: r.sender_name as string,
-    filter: r.filter as FilterName, matched: r.matched as string, text: r.text as string | null,
-    action: r.action as FilterAction,
+    filter: r.filter as EventSource, matched: r.matched as string, text: r.text as string | null,
+    action: r.action as EventAction,
     deleteOk: nullableBool(r.delete_ok!), banOk: nullableBool(r.ban_ok!), error: r.error as string | null,
     dryRun: r.dry_run === 1, unbannedAt: r.unbanned_at as number | null, createdAt: r.created_at as number,
   };

@@ -68,6 +68,19 @@ function commitTemplate() {
   void save({ noticeTemplate: text })
 }
 
+const warnLimit = ref<string | number>(chat.value.warnLimit)
+watch(() => chat.value.warnLimit, (n) => { warnLimit.value = n })
+
+function commitWarnLimit() {
+  const raw = String(warnLimit.value)
+  const n = Number(raw)
+  if (raw.trim() === '' || !Number.isInteger(n) || n === chat.value.warnLimit) {
+    warnLimit.value = chat.value.warnLimit
+    return
+  }
+  void save({ warnLimit: n }).then(() => { warnLimit.value = chat.value.warnLimit })
+}
+
 const SAMPLE: Record<string, string> = { user: 'Ana', action: 'banned', reason: 'banned word' }
 const preview = computed(() => template.value.replace(/\{(user|action|reason)\}/g, (_, key: string) => SAMPLE[key]!))
 </script>
@@ -161,6 +174,32 @@ const preview = computed(() => template.value.replace(/\{(user|action|reason)\}/
             If a name looks like a link, the user ID is shown.
           </p>
           <p class="text-sm break-words"><span class="text-muted-foreground">Preview:</span> {{ preview }}</p>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card class="py-4">
+      <CardContent class="space-y-3 px-4">
+        <div class="flex items-center gap-3">
+          <div class="min-w-0 flex-1">
+            <Label for="commandsEnabled" class="font-medium">Telegram commands</Label>
+            <p class="text-sm text-muted-foreground">
+              Admins who can ban users, and everyone on the staff list, can use <code>/ban</code>, <code>/unban</code> and
+              <code>/warn</code> in the group. Anyone else who tries gets a warning.
+            </p>
+          </div>
+          <Switch
+            id="commandsEnabled"
+            :model-value="chat.commandsEnabled"
+            @update:model-value="(v: boolean) => save({ commandsEnabled: v })"
+          />
+        </div>
+        <div v-if="chat.commandsEnabled" class="flex flex-wrap items-center gap-2 text-sm">
+          <Input
+            v-model="warnLimit" type="number" min="1" max="20" inputmode="numeric" class="w-20" aria-label="Warnings before a ban"
+            @change="commitWarnLimit"
+          />
+          <span>warnings in 30 days lead to a ban</span>
         </div>
       </CardContent>
     </Card>

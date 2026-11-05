@@ -1,6 +1,8 @@
 export type ChatType = "group" | "supergroup" | "channel";
 export type FilterAction = "delete" | "delete_ban";
 export type FilterName = "link" | "word" | "flood" | "bot";
+export type EventSource = FilterName | "command";
+export type EventAction = FilterAction | "warn" | "unban";
 export type SenderType = "user" | "chat";
 
 export interface ChatRecord {
@@ -14,13 +16,14 @@ export interface ChatRecord {
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
   rules: string; rulesEntities: FormattedEntity[]; autoRepliesEnabled: boolean;
+  commandsEnabled: boolean; warnLimit: number;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled" | "commandsEnabled" | "warnLimit">;
 
 export interface EventRecord {
   id: number; chatId: number; senderType: SenderType; senderId: number; senderName: string;
-  filter: FilterName; matched: string; text: string | null; action: FilterAction;
+  filter: EventSource; matched: string; text: string | null; action: EventAction;
   deleteOk: boolean | null; banOk: boolean | null; error: string | null;
   dryRun: boolean; unbannedAt: number | null; createdAt: number;
 }

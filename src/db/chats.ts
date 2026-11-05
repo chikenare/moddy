@@ -14,9 +14,10 @@ export interface ChatRecord {
   botFilterEnabled: boolean;
   noticeEnabled: boolean; noticeTemplate: string;
   rules: string; rulesEntities: FormattedEntity[]; autoRepliesEnabled: boolean;
+  commandsEnabled: boolean; warnLimit: number;
   createdAt: number; updatedAt: number;
 }
-export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled">;
+export type ChatSettings = Pick<ChatRecord, "moderationEnabled" | "linkFilterEnabled" | "linkFilterAction" | "wordFilterEnabled" | "wordFilterAction" | "floodFilterEnabled" | "floodFilterAction" | "floodCount" | "floodSeconds" | "botFilterEnabled" | "noticeEnabled" | "noticeTemplate" | "rules" | "rulesEntities" | "autoRepliesEnabled" | "commandsEnabled" | "warnLimit">;
 export type ChatInfo = Partial<Pick<ChatRecord, "title" | "username" | "botStatus" | "canDelete" | "canRestrict" | "linkedChatId" | "type">>;
 
 type Row = Record<string, number | string | null>;
@@ -32,10 +33,11 @@ const COLUMNS: Record<keyof ChatRecord, string> = {
   botFilterEnabled: "bot_filter_enabled",
   noticeEnabled: "notice_enabled", noticeTemplate: "notice_template",
   rules: "rules", rulesEntities: "rules_entities", autoRepliesEnabled: "auto_replies_enabled",
+  commandsEnabled: "commands_enabled", warnLimit: "warn_limit",
   createdAt: "created_at", updatedAt: "updated_at",
 };
 
-const BOOLEANS = new Set<string>(["canDelete", "canRestrict", "moderationEnabled", "linkFilterEnabled", "wordFilterEnabled", "floodFilterEnabled", "botFilterEnabled", "noticeEnabled", "autoRepliesEnabled"]);
+const BOOLEANS = new Set<string>(["canDelete", "canRestrict", "moderationEnabled", "linkFilterEnabled", "wordFilterEnabled", "floodFilterEnabled", "botFilterEnabled", "noticeEnabled", "autoRepliesEnabled", "commandsEnabled"]);
 
 function toRecord(row: Row): ChatRecord {
   const out: Record<string, unknown> = {};

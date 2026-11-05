@@ -5,6 +5,8 @@ import { startApiServer } from "./api/server.js";
 import { createInitialAccount, describeNewPassword } from "./auth/account.js";
 import { purgeSessions } from "./auth/session.js";
 import { createAutoRepliesHandler } from "./community/auto-replies.js";
+import { purgeWarnings } from "./db/warnings.js";
+import { createCommandsHandler } from "./moderation/commands.js";
 import { createRulesHandler } from "./community/rules.js";
 import { config } from "./config.js";
 import { openDatabase } from "./db/connection.js";
@@ -34,6 +36,7 @@ const scheduler = createScheduler({ api: bot.api, db, stats });
 
 bot.use(createRegistrationHandler({ db }));
 bot.use(createSeenUsersHandler({ db, stats }));
+bot.use(createCommandsHandler({ api: bot.api, db, appEnv: config.appEnv, queue: enforcer, stats }));
 bot.use(createModerationHandler({ db, enforcer, flood }));
 bot.use(createRulesHandler({ db }));
 bot.use(createAutoRepliesHandler({ db, stats }));
@@ -59,6 +62,7 @@ const purge = () => {
     purgeMessages(db, now);
     purgeStats(db, now * 1000);
     purgeSessions(db, now);
+    purgeWarnings(db, now);
   } catch (e) {
     console.error("Could not purge history:", e);
   }
@@ -98,7 +102,14 @@ process.once("SIGTERM", shutdown);
 
 await bot.api.deleteMyCommands();
 await bot.api.setMyCommands([{ command: "help", description: "Show help" }], { scope: { type: "all_private_chats" } });
-await bot.api.setMyCommands([{ command: "rules", description: "Show the group rules" }], { scope: { type: "all_group_chats" } });
+const RULES_COMMAND = { command: "rules", description: "Show the group rules" };
+await bot.api.setMyCommands([RULES_COMMAND], { scope: { type: "all_group_chats" } });
+await bot.api.setMyCommands([
+  RULES_COMMAND,
+  { command: "ban", description: "Ban someone: reply to their message, or name them" },
+  { command: "unban", description: "Lift a ban and clear their warnings" },
+  { command: "warn", description: "Warn someone; too many warnings lead to a ban" },
+], { scope: { type: "all_chat_administrators" } });
 
 stats.start();
 scheduler.start();

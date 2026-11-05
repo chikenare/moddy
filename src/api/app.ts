@@ -20,6 +20,7 @@ import { normalizeWhitelistEntry } from "../moderation/links.js";
 import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
 import { createAuth } from "./auth.js";
+import { clearWarnings } from "../db/warnings.js";
 import { hostOriginGuard } from "./guard.js";
 import type { PhotoFetcher } from "./photos.js";
 
@@ -54,6 +55,8 @@ const patchSchema = z.object({
   rules: z.string(),
   rulesEntities: z.array(entityBody).max(1000),
   autoRepliesEnabled: z.boolean(),
+  commandsEnabled: z.boolean(),
+  warnLimit: z.number().int().min(1).max(20),
 }).partial().strict();
 
 const textBody = (key: string) => z.object({ [key]: z.string() });
@@ -98,6 +101,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
   if (field === "floodSeconds") return "Seconds must be between 1 and 3600";
   if (field === "noticeTemplate") return "Notice must be between 1 and 500 characters";
   if (field === "rules") return "Rules must be at most 4000 characters";
+  if (field === "warnLimit") return "Warnings must be between 1 and 20";
   return field ? "Invalid value" : "Invalid body";
 }
 
@@ -420,6 +424,7 @@ export function createApi(deps: {
       return fail(c, 502, "Telegram could not undo the ban");
     }
     markUnbanned(db, id, event.senderType, event.senderId, Math.floor(Date.now() / 1000));
+    clearWarnings(db, id, event.senderId);
     return c.json(getEvent(db, id, event.id)!);
   });
 

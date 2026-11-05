@@ -18,7 +18,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 ## No objetivos (por ahora)
 
 - Varias cuentas o roles en el panel: hay una sola cuenta, la del dueño.
-- Comandos de Telegram para administrar (`/addword` y similares). Se descartaron a favor del panel.
+- Comandos de Telegram para configurar (`/addword` y similares): la configuración se hace en el panel. Solo hay comandos para actuar sobre una persona.
 - Captcha de entrada, listas globales de spammers, análisis con IA, antigüedad de la cuenta.
 - Tratar `@menciones` como enlaces: son parte de la conversación normal.
 - Evasiones avanzadas de palabras (`p.u.t.a`, caracteres cirílicos parecidos).
@@ -253,6 +253,25 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. P
   - **Historial**: quién, qué filtro, qué coincidió, resultado, marca de simulado y botón de desbanear.
 - El texto del spam se muestra siempre como texto plano: sin `v-html` y sin enlaces clicables.
 - Un aviso visible cuando la API está en `development`, para que nadie crea que los bans son reales.
+
+## Comandos en Telegram
+
+`/ban`, `/unban` y `/warn`, con un interruptor por grupo en el panel, apagado por defecto. Solo se atienden en mensajes nuevos de texto: no en ediciones, pies de foto, reenvíos ni mensajes de bots inline. `/ban@otro_bot` se ignora.
+
+**Quién puede usarlos.** El creador, los admins con permiso de banear, los admins anónimos y la lista de staff. Un admin sin ese permiso recibe un aviso y ningún warn. Quien publica como canal sigue por los filtros normales, porque no se puede comprobar ni avisar. Si Telegram no permite comprobar quién lo pidió, no se hace nada ni se castiga a nadie.
+
+**A quién apuntan.** A quien se nombra primero (`@usuario`, si el bot lo ha visto, o una mención sin usuario), luego al autor del mensaje respondido y, sin respuesta, a un ID numérico. En una respuesta, un número es parte del motivo. La respuesta automática de un tema de foro a su primer mensaje no cuenta como respuesta. Lo que siga es el motivo, de hasta 200 caracteres.
+
+**A quién no pueden tocar** `/ban` y `/warn`: admins, staff, quien lo pide, el propio bot, las cuentas de servicio de Telegram, los admins anónimos y el canal vinculado. Si no se puede comprobar al objetivo, no se hace nada. Estas protecciones también valen en desarrollo.
+
+**Qué hacen.**
+
+- `/ban` banea, y borra el comando y el mensaje respondido.
+- `/warn` suma un warn y borra solo el comando. Al llegar al límite banea y borra también el mensaje respondido.
+- `/unban` levanta el ban, borra los warns y marca como deshechos los bans anteriores. El botón del historial también borra los warns.
+- Sin permiso, cualquiera de los tres borra el comando y suma un warn a quien lo usó, con un aviso de como máximo uno cada 10 segundos por grupo. Al llegar al límite, le banea.
+
+Los warns duran 30 días y el límite por grupo va de 1 a 20, con 3 por defecto. Todo queda en el historial con quién lo hizo y el motivo. En desarrollo los bans y desbaneos se simulan. Los mensajes del bot no usan formato ni repiten nombres que parezcan enlaces. Telegram muestra estos comandos en el menú solo a los admins, en todos los grupos, aunque estén apagados en alguno.
 
 ## Acceso, login y despliegue
 

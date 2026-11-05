@@ -7,6 +7,7 @@ import { addWord, listWords } from "../db/lists.js";
 import { fireRecurring, getRecurring } from "../db/recurring.js";
 import { recordSeenUser } from "../db/staff.js";
 import { addDailyStats, utcDay } from "../db/stats.js";
+import { addWarning, countWarnings } from "../db/warnings.js";
 import { hashPassword, saveAccount } from "../auth/account.js";
 import { createSession } from "../auth/session.js";
 import { type ApiTelegram, createApi } from "./app.js";
@@ -643,4 +644,26 @@ test("GET /api/metrics rejects other periods and unknown chats with a readable e
   expect(unknown.status).toBe(404);
   expect(await unknown.json()).toEqual({ error: "Chat not found" });
   expect((await get("/api/metrics?days=7&chatId=abc")).status).toBe(404);
+});
+
+test("commands are off by default, and their settings save and validate", async () => {
+  const initial = await (await get("/api/chats/-100")).json() as { commandsEnabled: boolean; warnLimit: number };
+  expect(initial).toMatchObject({ commandsEnabled: false, warnLimit: 3 });
+  const saved = await patch("/api/chats/-100", { commandsEnabled: true, warnLimit: 5 });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject({ commandsEnabled: true, warnLimit: 5 });
+});
+
+test.each([0, 21, 1.5])("un limite de warns %s da 400 legible", async (warnLimit) => {
+  const r = await patch("/api/chats/-100", { warnLimit });
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error: "Warnings must be between 1 and 20" });
+});
+
+test("unbanning from the history also clears the warnings", async () => {
+  const event = insertEvent(db, ev({ senderId: 10, banOk: true }));
+  addWarning(db, CHAT, 10, null, Math.floor(Date.now() / 1000));
+  const r = await post(`/api/chats/-100/events/${event.id}/unban`);
+  expect(r.status).toBe(200);
+  expect(countWarnings(db, CHAT, 10, Math.floor(Date.now() / 1000))).toBe(0);
 });

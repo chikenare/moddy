@@ -1,9 +1,10 @@
-import { type Api, GrammyError } from "grammy";
+import type { Api } from "grammy";
 import type { Db } from "../db/connection.js";
 import { type FilterAction, updateChatInfo } from "../db/chats.js";
 import { type FilterName, insertEvent } from "../db/events.js";
 import type { AppEnv } from "../env.js";
 import { type NoticeOutcome, renderNotice } from "./notice.js";
+import { withRetry as retrying } from "./retry.js";
 import type { StatsSink } from "../metrics/collector.js";
 import type { Sender } from "./sender.js";
 
@@ -15,7 +16,6 @@ export interface Violation {
 export type EnforcerApi = Pick<Api, "getChat" | "getChatMember" | "deleteMessages" | "banChatMember" | "banChatSenderChat" | "sendMessage">;
 
 const BATCH = 100;
-const ATTEMPTS = 3;
 const NOTICE_INTERVAL_MS = 10_000;
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -46,16 +46,7 @@ export function createEnforcer(deps: {
     }
   }
 
-  async function withRetry<T>(call: () => Promise<T>): Promise<T> {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await call();
-      } catch (e) {
-        if (!(e instanceof GrammyError) || e.error_code !== 429 || attempt >= ATTEMPTS) throw e;
-        await sleep((e.parameters.retry_after ?? 1) * 1000);
-      }
-    }
-  }
+  const withRetry = <T>(call: () => Promise<T>) => retrying(call, sleep);
 
   async function process(v: Violation): Promise<void> {
     const production = appEnv === "production";
@@ -136,14 +127,20 @@ export function createEnforcer(deps: {
     }
   }
 
+  // One at a time per chat, without holding up updates from other chats.
+  function run(chatId: number, task: () => Promise<void>): void {
+    const prev = tails.get(chatId) ?? Promise.resolve();
+    const next: Promise<void> = prev
+      .then(task)
+      .catch((e) => console.error(`Failed to process action in chat ${chatId}:`, e))
+      .finally(() => { if (tails.get(chatId) === next) tails.delete(chatId); });
+    tails.set(chatId, next);
+  }
+
   return {
+    run,
     enqueue(violation: Violation): void {
-      const prev = tails.get(violation.chatId) ?? Promise.resolve();
-      const next: Promise<void> = prev
-        .then(() => process(violation))
-        .catch((e) => console.error(`Failed to process action in chat ${violation.chatId}:`, e))
-        .finally(() => { if (tails.get(violation.chatId) === next) tails.delete(violation.chatId); });
-      tails.set(violation.chatId, next);
+      run(violation.chatId, () => process(violation));
     },
     async drain(): Promise<void> {
       while (tails.size) await Promise.all([...tails.values()]);

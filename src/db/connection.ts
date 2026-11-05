@@ -123,6 +123,18 @@ export const MIGRATIONS: string[] = [
   ) STRICT;
   DELETE FROM panel_sessions;
   `,
+  `
+  ALTER TABLE chats ADD COLUMN commands_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE chats ADD COLUMN warn_limit INTEGER NOT NULL DEFAULT 3;
+  CREATE TABLE chat_warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    sender_id INTEGER NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE INDEX chat_warnings_sender ON chat_warnings(chat_id, sender_id, created_at);
+  `,
 ];
 
 export function openDatabase(path: string): Db {

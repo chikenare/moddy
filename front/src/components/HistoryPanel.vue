@@ -8,14 +8,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { EventRecord, FilterName } from '@/lib/api'
+import type { EventRecord, EventSource } from '@/lib/api'
 import { useChatDetailStore } from '@/stores/chatDetail'
 
 const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
 
-const filterLabels: Record<FilterName, string> = {
-  link: 'Links', word: 'Words', flood: 'Flood', bot: 'Bots',
+const filterLabels: Record<EventSource, string> = {
+  link: 'Links', word: 'Words', flood: 'Flood', bot: 'Bots', command: 'Command',
 }
 
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
@@ -23,7 +23,7 @@ const when = (ts: number) => fmt.format(new Date(ts * 1000))
 
 const isActiveBan = (e: EventRecord) => e.banOk === true && !e.dryRun && e.unbannedAt === null
 const canAddToStaff = (e: EventRecord) =>
-  e.senderType === 'user' && e.filter !== 'bot' && !store.staff.some((s) => s.userId === e.senderId)
+  e.senderType === 'user' && e.filter !== 'bot' && e.filter !== 'command' && !store.staff.some((s) => s.userId === e.senderId)
 
 async function addToStaff(e: EventRecord) {
   try {
@@ -35,6 +35,8 @@ async function addToStaff(e: EventRecord) {
 }
 
 function outcome(e: EventRecord) {
+  if (e.action === 'warn') return 'Warned'
+  if (e.action === 'unban') return e.error ? 'No effect' : 'Unbanned'
   const parts: string[] = []
   if (e.deleteOk) parts.push('Deleted')
   if (e.banOk) parts.push(e.unbannedAt !== null ? 'Banned (undone)' : 'Banned')
