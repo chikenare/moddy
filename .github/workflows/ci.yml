@@ -1,7 +1,12 @@
 name: CI
 
-# On main these checks run from build.yml, before the image is built.
+# build.yml also runs these checks before it builds an image.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
     branches: [main]
   workflow_call:

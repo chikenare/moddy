@@ -6,7 +6,7 @@ import type { StatsSink } from "../metrics/collector.js";
 
 // Telegram can't look up a @username, so this is what lets the panel add staff by name.
 // Service messages (joins, pins, title changes...) carry none of these.
-const CONTENT_KEYS = [
+export const CONTENT_KEYS = [
   "text", "caption", "photo", "video", "document", "sticker", "voice", "audio", "animation", "video_note",
   "poll", "location", "contact", "dice", "venue", "game", "story", "paid_media",
 ] as const;

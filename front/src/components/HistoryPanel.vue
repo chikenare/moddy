@@ -25,6 +25,16 @@ const isActiveBan = (e: EventRecord) => e.banOk === true && !e.dryRun && e.unban
 const canAddToStaff = (e: EventRecord) =>
   e.senderType === 'user' && e.filter !== 'bot' && e.filter !== 'command' && !store.staff.some((s) => s.userId === e.senderId)
 
+const staffTarget = ref<EventRecord | null>(null)
+const staffDialogOpen = ref(false)
+
+// With commands on, staff can also ban, so this is no longer just excusing a false positive.
+function askAddToStaff(e: EventRecord) {
+  if (!store.chat?.commandsEnabled) return void addToStaff(e)
+  staffTarget.value = e
+  staffDialogOpen.value = true
+}
+
 async function addToStaff(e: EventRecord) {
   try {
     await store.addStaff(String(e.senderId))
@@ -36,7 +46,7 @@ async function addToStaff(e: EventRecord) {
 
 function outcome(e: EventRecord) {
   if (e.action === 'warn') return 'Warned'
-  if (e.action === 'unban') return e.error ? 'No effect' : 'Unbanned'
+  if (e.action === 'unban') return e.error?.includes('unban:') ? 'No effect' : 'Unbanned'
   const parts: string[] = []
   if (e.deleteOk) parts.push('Deleted')
   if (e.banOk) parts.push(e.unbannedAt !== null ? 'Banned (undone)' : 'Banned')
@@ -110,7 +120,7 @@ async function more() {
             <TableCell>
               <div class="flex flex-col items-start gap-1">
                 <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Unban</Button>
-                <Button v-if="canAddToStaff(e)" variant="outline" size="sm" @click="addToStaff(e)">Add to staff</Button>
+                <Button v-if="canAddToStaff(e)" variant="outline" size="sm" @click="askAddToStaff(e)">Add to staff</Button>
               </div>
             </TableCell>
           </TableRow>
@@ -120,6 +130,21 @@ async function more() {
     <Button v-if="store.nextBefore !== null" variant="outline" :disabled="loadingMore" @click="more">
       Load more
     </Button>
+
+    <AlertDialog v-model:open="staffDialogOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Add {{ staffTarget?.senderName }} to staff?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Telegram commands are on in this group, so besides skipping the filters they could ban, warn and unban other members.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction @click="addToStaff(staffTarget!)">Add to staff</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <AlertDialog v-model:open="dialogOpen">
       <AlertDialogContent>

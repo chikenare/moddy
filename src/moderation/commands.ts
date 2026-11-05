@@ -9,6 +9,7 @@ import type { AppEnv } from "../env.js";
 import type { StatsSink } from "../metrics/collector.js";
 import { safeName } from "./notice.js";
 import { withRetry } from "./retry.js";
+import { CONTENT_KEYS } from "./seen.js";
 import { type Sender, senderFromUser, senderOf } from "./sender.js";
 
 const COMMANDS = ["ban", "unban", "warn"] as const;
@@ -29,10 +30,32 @@ interface Invocation {
   anonymous: boolean;
 }
 
-type Resolved = { target: Sender; reason: string | null; replied: Message | null } | { problem: string };
+type Resolved = { target: Sender; reason: string | null; replied: Message | null; mention: string | null } | { problem: string };
 type BanResult = "banned" | "simulated" | "failed";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const COULD_NOT = "Check that I have permission to ban users, and see the history in the panel.";
+
+// Moderators see the ID too, so a wrong target shows at once.
+function label(target: Sender): string {
+  const name = safeName(target);
+  return name === String(target.id) ? name : `${name} (${target.id})`;
+}
+
+// A reply that really points at a message. In a forum topic every message counts as a reply to the topic's first one,
+// and in a channel's comments, as a reply to the post.
+function pointedReply(message: Message): Message | null {
+  const reply = message.reply_to_message;
+  if (!reply || reply.is_automatic_forward) return null;
+  return message.is_topic_message && reply.message_id === message.message_thread_id ? null : reply;
+}
+
+// A service message's sender is whoever caused it, not who it is about.
+function targetOfReply(reply: Message): Sender | null {
+  if (reply.new_chat_members?.length === 1) return senderFromUser(reply.new_chat_members[0]!);
+  return CONTENT_KEYS.some((key) => reply[key] !== undefined) ? senderOf(reply) : null;
+}
 
 function cleanReason(raw: string): string | null {
   const chars = Array.from(raw.trim());
@@ -99,8 +122,7 @@ export function createCommandsHandler(deps: {
 
   async function ban(inv: Invocation, target: Sender, details: { matched: string; text: string | null; messageIds: number[] }): Promise<BanResult> {
     const chatId = inv.chat.id;
-    const deleteError = await remove(chatId, details.messageIds);
-    const errors = deleteError ? [deleteError] : [];
+    const errors: string[] = [];
     let banOk: boolean | null = null;
     if (production) {
       try {
@@ -112,6 +134,9 @@ export function createCommandsHandler(deps: {
         errors.push(`ban: ${messageOf(e)}`);
       }
     }
+    // If the ban failed the comment stays, as evidence for the moderator.
+    const deleteError = await remove(chatId, banOk === false ? [inv.message.message_id] : details.messageIds);
+    if (deleteError) errors.push(deleteError);
     record(chatId, target, "delete_ban", {
       matched: details.matched, text: details.text, deleteOk: deleteError === null, banOk,
       error: errors.length ? errors.join("; ") : null, dryRun: !production,
@@ -122,7 +147,7 @@ export function createCommandsHandler(deps: {
   }
 
   function resolveTarget(inv: Invocation): Resolved {
-    const { message, name, chat } = inv;
+    const { message, chat } = inv;
     const text = message.text ?? "";
     const entities = message.entities ?? [];
     let start = entities.find((e) => e.type === "bot_command" && e.offset === 0)?.length ?? 0;
@@ -131,60 +156,64 @@ export function createCommandsHandler(deps: {
     const named = entities.find((e) => e.offset === start && (e.type === "mention" || e.type === "text_mention"));
     if (named) {
       const reason = cleanReason(text.slice(named.offset + named.length));
-      if (named.type === "text_mention") return { target: senderFromUser(named.user), reason, replied: null };
+      if (named.type === "text_mention") return { target: senderFromUser(named.user), reason, replied: null, mention: null };
       const mention = text.slice(named.offset, named.offset + named.length);
       const seen = findSeenUser(db, chat.id, mention.slice(1));
       if (!seen) return { problem: `I haven't seen ${mention} in this group. Reply to one of their messages, or use their numeric ID.` };
-      return { target: { type: "user", id: seen.userId, name: seen.displayName }, reason, replied: null };
+      return { target: { type: "user", id: seen.userId, name: seen.displayName }, reason, replied: null, mention };
     }
 
     const args = text.slice(start);
-    // In a forum topic, every message counts as a reply to the topic's first one.
-    const reply = message.reply_to_message;
-    if (reply && !(message.is_topic_message && reply.message_id === message.message_thread_id)) {
-      return { target: senderOf(reply), reason: cleanReason(args), replied: reply };
-    }
+    const reply = pointedReply(message);
+    const replyTarget = reply && targetOfReply(reply);
+    if (replyTarget) return { target: replyTarget, reason: cleanReason(args), replied: reply, mention: null };
 
     const id = /^\d{1,16}(?=\s|$)/.exec(args);
-    if (id) return { target: { type: "user", id: Number(id[0]), name: id[0] }, reason: cleanReason(args.slice(id[0].length)), replied: null };
-    return { problem: `Reply to a message with /${name}, or use /${name} @user or /${name} 12345. You can add a reason after it.` };
+    if (id) return { target: { type: "user", id: Number(id[0]), name: id[0] }, reason: cleanReason(args.slice(id[0].length)), replied: null, mention: null };
+    // No slash before a command name here: Telegram makes those tappable for everyone in the group.
+    return { problem: "Reply to someone's message, or name them with @user or their numeric ID. You can add a reason after it." };
   }
 
-  async function refusalFor(inv: Invocation, target: Sender): Promise<string | null> {
+  // Returns why not, or the target with the name Telegram has for them.
+  async function checkTarget(inv: Invocation, target: Sender, mention: string | null): Promise<{ refusal: string } | { target: Sender }> {
     const chatId = inv.chat.id;
+    const refuse = (refusal: string) => ({ refusal });
     if (target.type === "chat") {
-      if (target.id === chatId) return "That is an anonymous admin.";
-      if (target.id === inv.chat.linkedChatId) return "That is this group's linked channel.";
+      if (target.id === chatId) return refuse("That is an anonymous admin.");
+      if (target.id === inv.chat.linkedChatId) return refuse("That is this group's linked channel.");
       try {
         const info = await withRetry(() => api.getChat(chatId));
         if ("linked_chat_id" in info && info.linked_chat_id === target.id) {
           updateChatInfo(db, chatId, { linkedChatId: target.id });
-          return "That is this group's linked channel.";
+          return refuse("That is this group's linked channel.");
         }
       } catch (e) {
         console.error(`Could not check a channel in chat ${chatId}:`, e);
-        return "I could not check that channel, so I did nothing.";
+        return refuse("I could not check that channel, so I did nothing.");
       }
-      return null;
+      return { target };
     }
-    if (target.id === inv.botId) return "I can't do that to myself.";
-    if (SERVICE_ACCOUNTS.has(target.id)) return "That is a Telegram account.";
-    if (!inv.anonymous && target.id === inv.message.from?.id) return "You can't do that to yourself.";
-    if (isStaff(db, chatId, target.id)) return `${safeName(target)} is on the staff list.`;
+    if (target.id === inv.botId) return refuse("I can't do that to myself.");
+    if (SERVICE_ACCOUNTS.has(target.id)) return refuse("That is a Telegram account.");
+    if (!inv.anonymous && target.id === inv.message.from?.id) return refuse("You can't do that to yourself.");
+    if (isStaff(db, chatId, target.id)) return refuse(`${safeName(target)} is on the staff list.`);
     try {
       const member = await withRetry(() => api.getChatMember(chatId, target.id));
-      if (member.status === "creator" || member.status === "administrator") return `${safeName(target)} is an admin.`;
+      if (member.status === "creator" || member.status === "administrator") return refuse(`${safeName(target)} is an admin.`);
+      if (mention && member.user.username?.toLowerCase() !== mention.slice(1).toLowerCase()) {
+        return refuse("That username may belong to someone else now. Reply to one of their messages, or use their numeric ID.");
+      }
+      return { target: target.name === String(target.id) ? senderFromUser(member.user) : target };
     } catch (e) {
       console.error(`Could not check a user in chat ${chatId}:`, e);
-      return "I could not check that user, so I did nothing.";
+      return refuse("I could not check that user, so I did nothing.");
     }
-    return null;
   }
 
   async function unban(inv: Invocation, target: Sender, matched: string): Promise<void> {
     const chatId = inv.chat.id;
     const deleteError = await remove(chatId, [inv.message.message_id]);
-    const name = safeName(target);
+    const name = label(target);
     let error: string | null = null;
     if (production) {
       try {
@@ -200,7 +229,7 @@ export function createCommandsHandler(deps: {
       matched, text: null, deleteOk: deleteError === null, banOk: null,
       error: [deleteError, error].filter(Boolean).join("; ") || null, dryRun: !production,
     });
-    if (error) return say(inv, `I could not unban ${name}. Check that I have permission to ban users.`);
+    if (error) return say(inv, `I could not unban ${safeName(target)}. ${COULD_NOT}`);
     clearWarnings(db, chatId, target.id);
     await say(inv, `Unbanned ${name}${production ? "" : " (simulated)"}. They can rejoin on their own.`);
   }
@@ -210,7 +239,7 @@ export function createCommandsHandler(deps: {
     const { by, reason, replied } = details;
     const count = addWarning(db, chat.id, target.id, reason, nowSeconds());
     const tally = `${count}/${chat.warnLimit}`;
-    const name = safeName(target);
+    const name = label(target);
     const matched = `/warn by ${by} (${tally})${reason ? `: ${reason}` : ""}`;
     const text = replied ? replied.text ?? replied.caption ?? null : null;
 
@@ -218,7 +247,7 @@ export function createCommandsHandler(deps: {
       const messageIds = replied ? [message.message_id, replied.message_id] : [message.message_id];
       const result = await ban(inv, target, { matched, text, messageIds });
       return say(inv, result === "failed"
-        ? `I could not ban ${name}. Check that I have permission to ban users.`
+        ? `I could not ban ${safeName(target)}. ${COULD_NOT}`
         : `${name} reached ${tally} warnings and was banned${result === "simulated" ? " (simulated)" : ""}.`);
     }
 
@@ -227,26 +256,41 @@ export function createCommandsHandler(deps: {
     await say(inv, `Warning ${tally} for ${name}.${reason ? ` Reason: ${reason}` : ""}`);
   }
 
+  // Tapping a blue command in a group sends it bare or addressed to the bot, maybe replying to the message it was in.
+  // That is no attempt to moderate anyone, so it must not cost a warning: someone could post one as bait.
+  function looksLikeATap(inv: Invocation): boolean {
+    const text = inv.message.text ?? "";
+    const commandLength = inv.message.entities?.find((e) => e.type === "bot_command" && e.offset === 0)?.length ?? 0;
+    if (text.slice(commandLength).trim() !== "") return false;
+    const reply = pointedReply(inv.message);
+    return !reply || reply.from?.id === inv.botId || text.slice(0, commandLength).includes("@");
+  }
+
   async function punish(inv: Invocation): Promise<void> {
     const { chat, message, name: command } = inv;
+    if (looksLikeATap(inv)) {
+      await remove(chat.id, [message.message_id]);
+      return;
+    }
     const offender = senderOf(message);
+    const written = message.text ?? null;
     const count = addWarning(db, chat.id, offender.id, `Used /${command} without permission`, nowSeconds());
     const tally = `${count}/${chat.warnLimit}`;
     const matched = `Tried /${command} without permission (${tally})`;
     const name = safeName(offender);
 
     if (count >= chat.warnLimit) {
-      const result = await ban(inv, offender, { matched, text: null, messageIds: [message.message_id] });
+      const result = await ban(inv, offender, { matched, text: written, messageIds: [message.message_id] });
       if (result !== "failed") await sayLimited(inv, `${name} reached ${tally} warnings and was banned${result === "simulated" ? " (simulated)" : ""}.`);
       return;
     }
 
     const deleteError = await remove(chat.id, [message.message_id]);
-    record(chat.id, offender, "warn", { matched, text: null, deleteOk: deleteError === null, banOk: null, error: deleteError, dryRun: false });
-    await sayLimited(inv, `${name}, only admins and staff can use /${command}. Warning ${tally}.`);
+    record(chat.id, offender, "warn", { matched, text: written, deleteOk: deleteError === null, banOk: null, error: deleteError, dryRun: false });
+    await sayLimited(inv, `${name}, only admins and staff can use the ${command} command. Warning ${tally}.`);
   }
 
-  async function authorization(inv: Invocation): Promise<"allowed" | "lacks-permission" | "denied" | "unknown"> {
+  async function authorization(inv: Invocation): Promise<"allowed" | "lacks-permission" | "denied" | "gone" | "unknown"> {
     if (inv.anonymous) return "allowed";
     const userId = inv.message.from!.id;
     if (isStaff(db, inv.chat.id, userId)) return "allowed";
@@ -254,7 +298,8 @@ export function createCommandsHandler(deps: {
       const member = await withRetry(() => api.getChatMember(inv.chat.id, userId));
       if (member.status === "creator") return "allowed";
       if (member.status === "administrator") return member.can_restrict_members ? "allowed" : "lacks-permission";
-      return "denied";
+      // Already out of the group: a command queued behind their own ban.
+      return member.status === "kicked" || member.status === "left" ? "gone" : "denied";
     } catch (e) {
       console.error(`Could not check who used a command in chat ${inv.chat.id}:`, e);
       return "unknown";
@@ -263,20 +308,26 @@ export function createCommandsHandler(deps: {
 
   async function execute(inv: Invocation): Promise<void> {
     const access = await authorization(inv);
-    if (access === "unknown") return;
+    if (access === "unknown") return sayLimited(inv, "I could not check permissions for that command. Try again in a moment.");
+    if (access === "gone") {
+      await remove(inv.chat.id, [inv.message.message_id]);
+      return;
+    }
     if (access === "denied") return punish(inv);
     if (access === "lacks-permission") return say(inv, "You need the permission to ban users in this group.", true);
 
     const resolved = resolveTarget(inv);
     if ("problem" in resolved) return say(inv, resolved.problem, true);
-    const { target, reason, replied } = resolved;
+    const { reason, replied, mention } = resolved;
+    let { target } = resolved;
     if (target.type === "user" && target.id === 0) return say(inv, "I can't tell who sent that message.", true);
 
     const by = inv.anonymous ? "anonymous admin" : senderOf(inv.message).name;
     if (inv.name === "unban") return unban(inv, target, `/unban by ${by}`);
 
-    const refusal = await refusalFor(inv, target);
-    if (refusal) return say(inv, refusal, true);
+    const checked = await checkTarget(inv, target, mention);
+    if ("refusal" in checked) return say(inv, checked.refusal, true);
+    target = checked.target;
     if (inv.name === "warn") return warn(inv, target, { by, reason, replied });
 
     const result = await ban(inv, target, {
@@ -284,10 +335,9 @@ export function createCommandsHandler(deps: {
       text: replied ? replied.text ?? replied.caption ?? null : null,
       messageIds: replied ? [inv.message.message_id, replied.message_id] : [inv.message.message_id],
     });
-    const name = safeName(target);
     await say(inv, result === "failed"
-      ? `I could not ban ${name}. Check that I have permission to ban users.`
-      : `Banned ${name}${result === "simulated" ? " (simulated)" : ""}.${reason ? ` Reason: ${reason}` : ""}`);
+      ? `I could not ban ${safeName(target)}. ${COULD_NOT}`
+      : `Banned ${label(target)}${result === "simulated" ? " (simulated)" : ""}.${reason ? ` Reason: ${reason}` : ""}`);
   }
 
   const composer = new Composer<Context>();
@@ -301,7 +351,7 @@ export function createCommandsHandler(deps: {
     const anonymous = message.sender_chat?.id === chat.id;
     // Someone posting as a channel can't be checked or warned, so the filters deal with them as usual.
     if ((message.sender_chat && !anonymous) || (!anonymous && !message.from)) return next();
-    const name = ctx.entities("bot_command")[0]!.text.slice(1).split("@")[0]!.toLowerCase() as CommandName;
+    const name = ctx.entities("bot_command")[0]!.text.slice(1).split("@")[0] as CommandName;
     queue.run(chat.id, () => execute({ chat, message, name, botId: ctx.me.id, anonymous }));
     return undefined;
   });

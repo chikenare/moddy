@@ -83,7 +83,7 @@ test("the creator bans by replying: deletes the comment and the command, and rec
   expect(banned()).toEqual([20]);
   expect(deleted().sort()).toEqual([700, commandId(update)].sort());
   expect(nextCalled).toBe(false);
-  expect(sent()).toEqual(["Banned Pepe. Reason: spam links"]);
+  expect(sent()).toEqual(["Banned Pepe (20). Reason: spam links"]);
   const [event] = events();
   expect(event).toMatchObject({
     senderId: 20, senderName: "Pepe", senderType: "user", filter: "command", action: "delete_ban",
@@ -136,7 +136,7 @@ test("if the bot cannot check who asked, it does nothing and punishes nobody", a
   await run(command("/ban", { reply_to_message: replyTo() }));
   expect(banned()).toEqual([]);
   expect(deleted()).toEqual([]);
-  expect(sent()).toEqual([]);
+  expect(sent()).toEqual(["I could not check permissions for that command. Try again in a moment."]);
   expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(0);
 });
 
@@ -149,24 +149,24 @@ test.each(["ban", "unban", "warn"])("a normal member using /%s loses the command
   expect(deleted()).toEqual([commandId(update)]);
   expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(1);
   expect(countWarnings(db, CHAT, 20, START_MS / 1000)).toBe(0);
-  expect(sent()).toEqual([`Ana, only admins and staff can use /${name}. Warning 1/3.`]);
+  expect(sent()).toEqual([`Ana, only admins and staff can use the ${name} command. Warning 1/3.`]);
   expect(events()[0]).toMatchObject({ senderId: 10, filter: "command", action: "warn", matched: `Tried /${name} without permission (1/3)`, banOk: null });
   expect(nextCalled).toBe(false);
 });
 
 test("notices are limited to one every 10 seconds per group, but every attempt counts", async () => {
   members[10] = { status: "member", user: ANA };
-  await run(command("/ban"), command("/ban"));
+  await run(command("/ban 20"), command("/ban 20"));
   expect(sent()).toHaveLength(1);
   expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(2);
   clock += 10_000;
-  await run(command("/warn"));
+  await run(command("/warn 20"));
   expect(sent()).toHaveLength(2);
 });
 
 test("reaching the limit bans a member who keeps trying, and starts them from zero", async () => {
   members[10] = { status: "member", user: ANA };
-  await run(command("/ban"), command("/ban"), command("/ban"));
+  await run(command("/ban 20"), command("/ban 20"), command("/ban 20"));
   expect(banned()).toEqual([10]);
   expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(0);
   expect(events()[0]).toMatchObject({ senderId: 10, action: "delete_ban", banOk: true, matched: "Tried /ban without permission (3/3)" });
@@ -175,16 +175,16 @@ test("reaching the limit bans a member who keeps trying, and starts them from ze
 test("the limit is set per group", async () => {
   members[10] = { status: "member", user: ANA };
   updateChatSettings(db, CHAT, { warnLimit: 1 });
-  await run(command("/ban"));
+  await run(command("/ban 20"));
   expect(banned()).toEqual([10]);
   expect(sent()).toEqual(["Ana reached 1/1 warnings and was banned."]);
 });
 
 test("warnings expire after 30 days", async () => {
   members[10] = { status: "member", user: ANA };
-  await run(command("/ban"), command("/ban"));
+  await run(command("/ban 20"), command("/ban 20"));
   clock += 30 * DAY_MS;
-  await run(command("/ban"));
+  await run(command("/ban 20"));
   expect(banned()).toEqual([]);
   expect(countWarnings(db, CHAT, 10, clock / 1000)).toBe(1);
 });
@@ -199,11 +199,12 @@ test("warnings in another group do not count here", async () => {
 
 test("/ban @user finds someone the bot has seen", async () => {
   recordSeenUser(db, CHAT, { id: 20, username: "pepe", displayName: "Pepe" });
+  members[20] = { status: "member", user: { ...PEPE, username: "pepe" } };
   const update = command("/ban @Pepe spam", {}, [{ type: "mention", offset: 5, length: 5 }]);
   await run(update);
   expect(banned()).toEqual([20]);
   expect(deleted()).toEqual([commandId(update)]);
-  expect(sent()).toEqual(["Banned Pepe. Reason: spam"]);
+  expect(sent()).toEqual(["Banned Pepe (20). Reason: spam"]);
 });
 
 test("/ban @user explains when the bot has never seen them", async () => {
@@ -215,17 +216,20 @@ test("/ban @user explains when the bot has never seen them", async () => {
 test("a mention with no username points straight at the user", async () => {
   await run(command("/ban Pepe spam", {}, [{ type: "text_mention", offset: 5, length: 4, user: PEPE }]));
   expect(banned()).toEqual([20]);
-  expect(sent()).toEqual(["Banned Pepe. Reason: spam"]);
+  expect(sent()).toEqual(["Banned Pepe (20). Reason: spam"]);
 });
 
 test("/ban with a numeric ID", async () => {
+  members[20] = { status: "member", user: PEPE };
   await run(command("/ban 20 spam"));
   expect(banned()).toEqual([20]);
-  expect(events()[0]).toMatchObject({ senderId: 20, senderName: "20", matched: "/ban by Ana: spam" });
+  expect(sent()).toEqual(["Banned Pepe (20). Reason: spam"]);
+  expect(events()[0]).toMatchObject({ senderId: 20, senderName: "Pepe", matched: "/ban by Ana: spam" });
 });
 
 test("a name typed in the command beats the reply, and the replied comment stays", async () => {
   recordSeenUser(db, CHAT, { id: 30, username: "luis", displayName: "Luis" });
+  members[30] = { status: "member", user: { id: 30, is_bot: false, first_name: "Luis", username: "luis" } };
   const update = command("/ban @luis", { reply_to_message: replyTo() }, [{ type: "mention", offset: 5, length: 5 }]);
   await run(update);
   expect(banned()).toEqual([30]);
@@ -235,20 +239,20 @@ test("a name typed in the command beats the reply, and the replied comment stays
 test("in a reply a number is part of the reason", async () => {
   await run(command("/ban 5 links", { reply_to_message: replyTo() }));
   expect(banned()).toEqual([20]);
-  expect(sent()).toEqual(["Banned Pepe. Reason: 5 links"]);
+  expect(sent()).toEqual(["Banned Pepe (20). Reason: 5 links"]);
 });
 
 test("the automatic reply to a forum topic's first message is not a target", async () => {
   await run(command("/ban", { is_topic_message: true, message_thread_id: 700, reply_to_message: replyTo() }));
   expect(banned()).toEqual([]);
   const [payload] = t.callsOf("sendMessage").map((c) => c.payload);
-  expect(payload.text).toContain("Reply to a message");
+  expect(payload.text).toContain("Reply to someone");
   expect(payload.message_thread_id).toBe(700);
 });
 
 test("without a target it explains how to use the command", async () => {
   await run(command("/warn"));
-  expect(sent()).toEqual(["Reply to a message with /warn, or use /warn @user or /warn 12345. You can add a reason after it."]);
+  expect(sent()).toEqual(["Reply to someone's message, or name them with @user or their numeric ID. You can add a reason after it."]);
 });
 
 test.each([
@@ -317,7 +321,7 @@ test("a failed ban is reported and recorded, and keeps the warnings", async () =
   addWarning(db, CHAT, 20, null, START_MS / 1000);
   t.respond("banChatMember", () => { throw new Error("not enough rights"); });
   await run(command("/ban", { reply_to_message: replyTo() }));
-  expect(sent()).toEqual(["I could not ban Pepe. Check that I have permission to ban users."]);
+  expect(sent()).toEqual(["I could not ban Pepe. Check that I have permission to ban users, and see the history in the panel."]);
   expect(events()[0]).toMatchObject({ banOk: false, error: "ban: not enough rights" });
   expect(countWarnings(db, CHAT, 20, START_MS / 1000)).toBe(1);
 });
@@ -338,7 +342,7 @@ test("a name that looks like a link is never repeated in the group", async () =>
 
 test("a very long reason is cut", async () => {
   await run(command(`/ban ${"x".repeat(500)}`, { reply_to_message: replyTo() }));
-  expect(sent()[0]).toBe(`Banned Pepe. Reason: ${"x".repeat(200)}`);
+  expect(sent()[0]).toBe(`Banned Pepe (20). Reason: ${"x".repeat(200)}`);
 });
 
 test("messages from the bot use no formatting mode and do not notify", async () => {
@@ -355,7 +359,7 @@ test("/warn counts up, keeps the comment and removes only the command", async ()
   expect(deleted()).toEqual([commandId(update)]);
   expect(banned()).toEqual([]);
   expect(countWarnings(db, CHAT, 20, START_MS / 1000)).toBe(1);
-  expect(sent()).toEqual(["Warning 1/3 for Pepe. Reason: be nice"]);
+  expect(sent()).toEqual(["Warning 1/3 for Pepe (20). Reason: be nice"]);
   expect(events()[0]).toMatchObject({ senderId: 20, action: "warn", matched: "/warn by Ana (1/3): be nice", text: "buy my stuff", banOk: null });
 });
 
@@ -365,7 +369,7 @@ test("/warn at the limit bans, deletes the comment and starts from zero", async 
   expect(banned()).toEqual([20]);
   expect(deleted()).toContain(700);
   expect(countWarnings(db, CHAT, 20, START_MS / 1000)).toBe(0);
-  expect(sent()[2]).toBe("Pepe reached 3/3 warnings and was banned.");
+  expect(sent()[2]).toBe("Pepe (20) reached 3/3 warnings and was banned.");
   expect(events()[0]).toMatchObject({ senderId: 20, action: "delete_ban", matched: "/warn by Ana (3/3)", banOk: true });
 });
 
@@ -395,7 +399,7 @@ test("a failed unban is reported and keeps the warnings", async () => {
   addWarning(db, CHAT, 20, null, START_MS / 1000);
   t.respond("unbanChatMember", () => { throw new Error("nope"); });
   await run(command("/unban 20"));
-  expect(sent()).toEqual(["I could not unban 20. Check that I have permission to ban users."]);
+  expect(sent()).toEqual(["I could not unban 20. Check that I have permission to ban users, and see the history in the panel."]);
   expect(countWarnings(db, CHAT, 20, START_MS / 1000)).toBe(1);
   expect(events()[0]).toMatchObject({ action: "unban", error: "unban: nope" });
 });
@@ -408,7 +412,7 @@ test("in development bans are simulated, but protected people stay protected", a
   await run(command("/ban", { reply_to_message: replyTo() }));
   expect(banned()).toEqual([]);
   expect(deleted()).toContain(700);
-  expect(sent()).toEqual(["Banned Pepe (simulated)."]);
+  expect(sent()).toEqual(["Banned Pepe (20) (simulated)."]);
   expect(events()[0]).toMatchObject({ dryRun: true, banOk: null });
 
   members[20] = { status: "administrator", user: PEPE };
@@ -455,4 +459,148 @@ test.each([
   expect(t.calls).toEqual([]);
   expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(0);
   expect(nextCalled).toBe(true);
+});
+
+test.each([
+  ["bare", () => command("/ban")],
+  ["addressed to the bot", () => command("/ban@test_bot")],
+  ["replying to the bot's message", () => command("/ban", { reply_to_message: replyTo({ id: 999, is_bot: true, first_name: "Test" }) })],
+  ["addressed to the bot, replying to a member", () => command("/ban@test_bot", { reply_to_message: replyTo() })],
+])("a member sending /ban %s, as tapping a blue command does, only loses the message", async (_name, update) => {
+  members[10] = { status: "member", user: ANA };
+  const sentUpdate = update();
+  await run(sentUpdate);
+  expect(deleted()).toEqual([commandId(sentUpdate)]);
+  expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(0);
+  expect(sent()).toEqual([]);
+  expect(banned()).toEqual([]);
+});
+
+test("a member typing /ban with a reply or a target is warned", async () => {
+  members[10] = { status: "member", user: ANA };
+  await run(command("/ban", { reply_to_message: replyTo() }), command("/ban 20"));
+  expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(2);
+});
+
+test("nothing the bot says in the group contains a command someone could tap", async () => {
+  members[10] = { status: "member", user: ANA };
+  await run(command("/warn", { reply_to_message: replyTo() }));
+  members[10] = { status: "creator", user: ANA };
+  await run(command("/warn"), command("/unban"), command("/ban"));
+  expect(sent().length).toBeGreaterThanOrEqual(2);
+  for (const text of sent()) expect(text).not.toMatch(/(^|\s)\/[a-z]/i);
+});
+
+test("replying to \"M added S\" points at S, not at the person who added them", async () => {
+  const service = { new_chat_members: [{ id: 30, is_bot: false, first_name: "Spam" }], text: undefined };
+  await run(command("/ban", { reply_to_message: replyTo(PEPE, service as Partial<Message>) }));
+  expect(banned()).toEqual([30]);
+  expect(sent()).toEqual(["Banned Spam (30)."]);
+});
+
+test.each([
+  ["several people joining", { new_chat_members: [{ id: 30, is_bot: false, first_name: "A" }, { id: 31, is_bot: false, first_name: "B" }] }],
+  ["someone leaving", { left_chat_member: { id: 30, is_bot: false, first_name: "A" } }],
+  ["a pinned message", { pinned_message: {} }],
+])("replying to %s has no target", async (_name, service) => {
+  await run(command("/ban", { reply_to_message: replyTo(PEPE, { text: undefined, ...service } as Partial<Message>) }));
+  expect(banned()).toEqual([]);
+  expect(sent()[0]).toContain("Reply to someone");
+});
+
+test("a numeric ID still works when replying to a service message", async () => {
+  await run(command("/ban 40", { reply_to_message: replyTo(PEPE, { text: undefined, left_chat_member: { id: 30, is_bot: false, first_name: "A" } } as Partial<Message>) }));
+  expect(banned()).toEqual([40]);
+});
+
+test("a username that now belongs to someone else is refused", async () => {
+  recordSeenUser(db, CHAT, { id: 20, username: "vic", displayName: "Old Vic" });
+  members[20] = { status: "member", user: { ...PEPE, username: "someone_new" } };
+  await run(command("/ban @vic", {}, [{ type: "mention", offset: 5, length: 4 }]));
+  expect(banned()).toEqual([]);
+  expect(sent()).toEqual(["That username may belong to someone else now. Reply to one of their messages, or use their numeric ID."]);
+});
+
+test("in a channel's comments, the post being commented on is not a target", async () => {
+  const post = replyTo({ id: 777000, is_bot: false, first_name: "Telegram" }, { sender_chat: { ...CHANNEL, id: -600 } as Chat, is_automatic_forward: true });
+  updateChatInfo(db, CHAT, { linkedChatId: -600 });
+  await run(command("/unban 20", { reply_to_message: post }), command("/ban 20", { reply_to_message: post }));
+  expect(t.callsOf("unbanChatSenderChat")).toEqual([]);
+  expect(t.callsOf("unbanChatMember").map((c) => c.payload.user_id)).toEqual([20]);
+  expect(banned()).toEqual([20]);
+});
+
+test("a real reply inside a forum topic points at its author", async () => {
+  await run(command("/ban", { is_topic_message: true, message_thread_id: 5, reply_to_message: replyTo() }));
+  expect(banned()).toEqual([20]);
+});
+
+test("if a channel cannot be checked, nothing is banned", async () => {
+  t.respond("getChat", () => { throw new Error("network"); });
+  await run(command("/ban", { reply_to_message: replyTo(ANA, { sender_chat: CHANNEL }) }));
+  expect(t.callsOf("banChatSenderChat")).toEqual([]);
+  expect(sent()).toEqual(["I could not check that channel, so I did nothing."]);
+});
+
+test("only a mention right after the command is a target", async () => {
+  recordSeenUser(db, CHAT, { id: 30, username: "luis", displayName: "Luis" });
+  await run(command("/ban spam from @luis", { reply_to_message: replyTo() }, [{ type: "mention", offset: 15, length: 5 }]));
+  expect(banned()).toEqual([20]);
+});
+
+test("/ban 20abc is not an ID", async () => {
+  await run(command("/ban 20abc"));
+  expect(banned()).toEqual([]);
+  expect(sent()[0]).toContain("Reply to someone");
+});
+
+test.each([1087968824, 136817688])("Telegram's service account %i is refused", async (id) => {
+  await run(command("/ban", { reply_to_message: replyTo({ id, is_bot: true, first_name: "Service" }) }));
+  expect(banned()).toEqual([]);
+  expect(sent()).toEqual(["That is a Telegram account."]);
+});
+
+test("a failed ban keeps the comment as evidence and removes only the command", async () => {
+  t.respond("banChatMember", () => { throw new Error("not enough rights"); });
+  const update = command("/ban", { reply_to_message: replyTo() });
+  await run(update);
+  expect(deleted()).toEqual([commandId(update)]);
+});
+
+test("a failed ban at the limit does not claim it worked", async () => {
+  t.respond("banChatMember", () => { throw new Error("nope"); });
+  updateChatSettings(db, CHAT, { warnLimit: 1 });
+  await run(command("/warn", { reply_to_message: replyTo() }));
+  expect(sent()).toEqual(["I could not ban Pepe. Check that I have permission to ban users, and see the history in the panel."]);
+
+  members[10] = { status: "member", user: ANA };
+  clock += 10_000;
+  await run(command("/ban 20"));
+  expect(sent()).toHaveLength(1);
+});
+
+test("at the limit, a member's command is deleted too", async () => {
+  members[10] = { status: "member", user: ANA };
+  updateChatSettings(db, CHAT, { warnLimit: 1 });
+  const update = command("/ban 20");
+  await run(update);
+  expect(deleted()).toEqual([commandId(update)]);
+});
+
+test("commands queued behind a ban only delete the message", async () => {
+  members[10] = { status: "kicked", user: ANA, until_date: 0 };
+  const update = command("/ban 20");
+  await run(update);
+  expect(deleted()).toEqual([commandId(update)]);
+  expect(banned()).toEqual([]);
+  expect(countWarnings(db, CHAT, 10, START_MS / 1000)).toBe(0);
+  expect(sent()).toEqual([]);
+});
+
+test("a member's notice never repeats a name that looks like a link, and the history keeps what they wrote", async () => {
+  const spammer: User = { id: 10, is_bot: false, first_name: "buy at spam.example" };
+  members[10] = { status: "member", user: spammer };
+  await run(command("/ban https://spam.example", { from: spammer }));
+  expect(sent()[0]).not.toContain("spam.example");
+  expect(events()[0]!.text).toBe("/ban https://spam.example");
 });

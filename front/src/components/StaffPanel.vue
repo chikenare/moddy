@@ -41,6 +41,7 @@ async function remove(userId: number) {
   <div class="space-y-4">
     <p class="text-sm text-muted-foreground">
       Staff members are exempt from every filter in this group, without being admins.
+      If Telegram commands are on, they can also ban, warn and unban other members.
       Add them by @username if they've written in the group since moderation was on, or by numeric user ID.
     </p>
     <form class="space-y-2" @submit.prevent="add">
