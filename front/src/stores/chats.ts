@@ -13,9 +13,9 @@ export const useChatsStore = defineStore("chats", () => {
     loading.value = true;
     error.value = null;
     try {
-      const [health, list] = await Promise.all([api.health(), api.listChats()]);
-      appEnv.value = health.appEnv;
-      botUsername.value = health.botUsername;
+      const [info, list] = await Promise.all([api.info(), api.listChats()]);
+      appEnv.value = info.appEnv;
+      botUsername.value = info.botUsername;
       chats.value = list;
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Unknown error";

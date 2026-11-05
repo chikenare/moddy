@@ -17,7 +17,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 
 ## No objetivos (por ahora)
 
-- Login o permisos en el panel. El dueño lo pospuso de forma explícita.
+- Varias cuentas o roles en el panel: hay una sola cuenta, la del dueño.
 - Comandos de Telegram para administrar (`/addword` y similares). Se descartaron a favor del panel.
 - Captcha de entrada, listas globales de spammers, análisis con IA, antigüedad de la cuenta.
 - Tratar `@menciones` como enlaces: son parte de la conversación normal.
@@ -46,7 +46,7 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 - Flood: 5 mensajes iguales o similares en 10 segundos, configurable.
 - SQLite.
 - Frontend con Vue, shadcn (shadcn-vue en Vue) y Pinia, en la carpeta `front/`.
-- Sin login por ahora.
+- El panel tiene login con usuario y contraseña, definidos en `.env`.
 - Grupos y canales con configuración separada.
 - Todo se ejecuta con Docker.
 - En desarrollo el panel se abre en `http://bot.localhost`, por el Traefik que ya está corriendo y solo por HTTP.
@@ -67,7 +67,8 @@ El bot (grammY, TypeScript, long polling, sin base de datos) vendía planes con 
 | Canales sin filtros (ver "Canales") | En un canal solo publican admins |
 | Conducta de `APP_ENV` (ver abajo) | El dueño pidió que difiera; la diferencia concreta la propone este diseño |
 | Historial con retención de 90 días y texto truncado a 1000 caracteres; los bans vigentes se conservan sin texto | Permite auditar sin guardar mensajes para siempre, y un ban antiguo sigue pudiéndose deshacer desde el panel |
-| Acceso al panel en producción solo por túnel SSH | Sin login, cualquier otra vía expone un panel que puede banear |
+| Acceso al panel en producción solo por túnel SSH | Aun con login, reduce lo que queda expuesto; abrirlo a internet es una decisión aparte que requeriría HTTPS |
+| Login con usuario y contraseña en `.env`, no con Telegram | Un solo dueño; no depende del bot ni de conocer su ID de Telegram |
 | Se quita todo el flujo de compra (`/planes`, `/terms`, `/paysupport`, `/refund`), no solo la llamada a la API. El proyecto `playhubplus-api` no se modifica | Sin esa API no hay planes que vender. Sigue recuperable desde git |
 | Nombre neutro `telegram-bot` para paquete y proyecto de Docker | El dueño quitó la marca sin indicar otro nombre; textos del bot sin marca |
 
@@ -212,7 +213,10 @@ Hono en `/api`, JSON. Las escrituras validan su entrada y responden 4xx con un m
 
 | Método y ruta | Uso |
 | --- | --- |
-| `GET /api/health` | Estado |
+| `GET /api/health` | Estado, sin datos del bot; público |
+| `GET /api/auth/session` | Si hay sesión; público |
+| `POST /api/auth/login`, `POST /api/auth/logout` | Abrir y cerrar sesión; públicos |
+| `GET /api/info` | Entorno y usuario del bot |
 | `GET /api/chats` | Chats registrados con estado y permisos del bot |
 | `GET /api/chats/:id` | Detalle y configuración |
 | `PATCH /api/chats/:id` | Actualización parcial de la configuración |
@@ -248,15 +252,25 @@ Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue y Tailwind, en inglés. P
 - El texto del spam se muestra siempre como texto plano: sin `v-html` y sin enlaces clicables.
 - Un aviso visible cuando la API está en `development`, para que nadie crea que los bans son reales.
 
-## Acceso sin login y despliegue
+## Acceso, login y despliegue
 
-La API no publica ningún puerto en ningún entorno: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`.
+**Login.** `PANEL_USER` y `PANEL_PASSWORD` son obligatorios: sin ellos, o con una contraseña fuera de 12 a 256 caracteres, el bot no arranca, y `compose.prod.yml` detiene `up` si falta alguno, para no reemplazar un bot que funciona. Toda la API exige sesión salvo `GET /api/health`, `GET /api/auth/session`, `POST /api/auth/login` y `POST /api/auth/logout`, con denegación por defecto y una prueba que recorre todas las rutas; los archivos del panel son públicos para poder mostrar el login. La sesión es la cookie `panel_session`, `HttpOnly`, `SameSite=Strict`, y `Secure` detrás de HTTPS, de 30 días. SQLite solo guarda un HMAC del token, con una clave derivada de las credenciales mediante scrypt: una copia de la base no permite probar contraseñas. Cerrar sesión la termina en el servidor, y cambiar el usuario o la contraseña termina todas tras `docker compose up -d`; `restart` conserva los valores anteriores.
+
+Tras 10 intentos fallidos en 15 minutos el login se bloquea para todos durante ese tiempo, sin afectar a las sesiones abiertas. El cuerpo se lee antes de comprobar el límite, y la comprobación y el registro del fallo no ceden el control, así que un intento retenido a medio enviar también cuenta. El cuerpo del login admite como máximo 4 KB. El inicio del bloqueo se registra en el log sin credenciales.
+
+Límites conocidos del login:
+
+- Quien alcance el login puede mantenerlo bloqueado con 10 peticiones cada 15 minutos. No puede entrar ni afecta a las sesiones abiertas, y reiniciar el bot borra el bloqueo.
+- Volver a una contraseña anterior antes de 30 días revive sus sesiones, porque distinguirlas exigiría guardar algo con lo que probar contraseñas. Tras una sospecha de robo hay que elegir una contraseña nueva, no volver a una antigua.
+- `compose.prod.yml` no comprueba la longitud: con una contraseña corta `up` termina bien, pero el bot no arranca y se reinicia en bucle hasta corregirla.
+
+En desarrollo la API no publica ningún puerto: solo la alcanza el contenedor del panel, que hace proxy de `/api` hacia `bot:3000`. En producción, el mismo proceso sirve la API y el panel.
 
 - **Desarrollo:** el servidor de Vite tampoco publica puertos. Se entra por Traefik en `http://bot.localhost`, solo HTTP, sin certificado. Los servicios viven en la red externa `traefik`, como los demás proyectos.
-- **Producción:** una sola imagen y un solo contenedor. El propio bot sirve el panel ya compilado (`PANEL_DIR=/app/public`, con `index.html` como respaldo para las rutas del panel y caché inmutable para `/assets/`) y publica el puerto **únicamente en `127.0.0.1:8088`** (`8088:3000`), accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`). nginx ya no existe. El 8080 lo ocupa el dashboard de Traefik.
-- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite reenvía el `Host` original del navegador; en producción no hay proxy. Todas las respuestas llevan `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` y `Referrer-Policy: same-origin`.
+- **Producción:** una sola imagen y un solo contenedor. El propio bot sirve el panel ya compilado (`PANEL_DIR=/app/public`, con `index.html` como respaldo para las rutas del panel y caché inmutable para `/assets/`) y publica el puerto **únicamente en `127.0.0.1:8088`** (`8088:3000`), accesible solo por túnel SSH (por ejemplo, `ssh -L 9000:127.0.0.1:8088 servidor`, y entrar en `http://panel.localhost:9000`). Mejor no usar `localhost` ni `bot.localhost`: las cookies no distinguen puertos, así que otras aplicaciones locales o el panel de desarrollo compartirían la sesión. El servidor admite 256 conexiones a la vez y 30 segundos por petición, y los logs rotan a 10 MB por 3 archivos. nginx ya no existe. El 8080 lo ocupa el dashboard de Traefik.
+- La API no habilita CORS, valida `Host` en toda petición y `Origin` en las escrituras, para que una página web maliciosa no pueda usar el navegador del dueño contra el panel. Acepta `bot.localhost`, `panel.localhost`, `localhost`, `127.0.0.1` y `[::1]` en cualquier puerto. Vite reenvía el `Host` original del navegador; en producción no hay proxy. Todas las respuestas llevan `X-Frame-Options: DENY`, una `Content-Security-Policy` que solo admite scripts, peticiones y fuentes del propio panel y prohíbe incrustarlo en marcos, `X-Content-Type-Options: nosniff` y `Referrer-Policy: same-origin`.
 
-Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar al panel enviando ese `Host`. Se acepta en desarrollo, igual que los otros paneles de esa máquina, y se resuelve con el login. Ahora el panel también puede enviar mensajes a los grupos reales, de modo que quien llegue al panel por la red local puede publicar en ellos, no solo cambiar su configuración.
+Límite conocido: Traefik escucha en todas las interfaces de la máquina de desarrollo, así que alguien de la misma red local puede llegar a la pantalla de login enviando ese `Host`. Sin la contraseña no puede hacer nada, pero el tráfico va por HTTP sin cifrar: en una red no confiable, la contraseña y la sesión podrían interceptarse.
 
 Cambios de infraestructura:
 
@@ -270,7 +284,7 @@ Cambios de infraestructura:
 
 ## Panel completo
 
-El dueño pidió un panel más completo. Valoró un modelo SaaS y lo descartó, así que sigue siendo para un solo dueño y sin login.
+El dueño pidió un panel más completo. Valoró un modelo SaaS y lo descartó, así que sigue siendo para un solo dueño.
 
 - **Mensajes recurrentes:** expresión cron y zona horaria, con opciones simples en la interfaz. Mínimo 5 minutos entre envíos para que el bot no inunde un grupo. Cada ejecución crea un mensaje programado normal, y así reutiliza envío, historial y protección contra duplicados. Con el bot parado, las ejecuciones perdidas se reducen a una, que se descarta si lleva más de una hora de retraso.
 - **Formato de Telegram** en auto replies, mensajes y reglas, guardado como texto y entidades.

@@ -1,7 +1,8 @@
-import { serve } from "@hono/node-server";
 import { Bot } from "grammy";
 import { createApi } from "./api/app.js";
 import { createPhotoFetcher } from "./api/photos.js";
+import { startApiServer } from "./api/server.js";
+import { purgeSessions } from "./auth/session.js";
 import { createAutoRepliesHandler } from "./community/auto-replies.js";
 import { createRulesHandler } from "./community/rules.js";
 import { config } from "./config.js";
@@ -54,6 +55,7 @@ const purge = () => {
     purgeSeenUsers(db, now);
     purgeMessages(db, now);
     purgeStats(db, now * 1000);
+    purgeSessions(db, now);
   } catch (e) {
     console.error("Could not purge history:", e);
   }
@@ -69,8 +71,9 @@ const api = createApi({
   onMessageQueued: () => scheduler.kick(),
   fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
   panelDir: config.panelDir,
+  credentials: config.panelCredentials,
 });
-const server = serve({ fetch: api.fetch, port: config.apiPort });
+const server = startApiServer(api.fetch, config.apiPort);
 
 let closing = false;
 let polling: Promise<void> = Promise.resolve();

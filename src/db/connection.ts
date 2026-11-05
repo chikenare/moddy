@@ -102,6 +102,17 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (chat_id, day)
   ) STRICT;
   `,
+  `
+  CREATE TABLE panel_sessions (
+    token_hash TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+  ) STRICT;
+  `,
+  `
+  DROP TABLE panel_sessions;
+  CREATE TABLE panel_sessions (
+    token_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+  ) STRICT;
+  `,
 ];
 
 export function openDatabase(path: string): Db {

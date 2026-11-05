@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 
-const ALLOWED_HOSTS = new Set(["bot.localhost", "localhost", "127.0.0.1", "[::1]"]);
+const ALLOWED_HOSTS = new Set(["bot.localhost", "panel.localhost", "localhost", "127.0.0.1", "[::1]"]);
 
 function hostname(host: string): string {
   const end = host.indexOf("]");

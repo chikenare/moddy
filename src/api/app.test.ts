@@ -7,6 +7,7 @@ import { addWord, listWords } from "../db/lists.js";
 import { fireRecurring, getRecurring } from "../db/recurring.js";
 import { recordSeenUser } from "../db/staff.js";
 import { addDailyStats, utcDay } from "../db/stats.js";
+import { createSession, sessionKey } from "../auth/session.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
 let db: Db;
@@ -14,6 +15,8 @@ let telegram: { [K in keyof ApiTelegram]: ReturnType<typeof vi.fn> };
 let app: ReturnType<typeof createApi>;
 let fetchPhoto: ReturnType<typeof vi.fn<(id: number) => Promise<Uint8Array | null>>>;
 let queued: ReturnType<typeof vi.fn<() => void>>;
+let session: string;
+const CREDENTIALS = { user: "owner", password: "correct horse battery" };
 
 const CHAT = -100;
 const CHANNEL = -200;
@@ -27,7 +30,7 @@ const grammyError = (code: number) =>
   new GrammyError("fallo", { ok: false, error_code: code, description: "fallo" }, "leaveChat", {});
 
 function send(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
-  const init: RequestInit = { method, headers: { Host: "bot.localhost", ...headers } };
+  const init: RequestInit = { method, headers: { Host: "bot.localhost", Cookie: session, ...headers } };
   if (body !== undefined) {
     init.body = typeof body === "string" ? body : JSON.stringify(body);
     (init.headers as Record<string, string>)["Content-Type"] = "application/json";
@@ -45,16 +48,17 @@ beforeEach(() => {
   db = openDatabase(":memory:");
   insertChat(db, { id: CHAT, type: "supergroup", title: "Grupo", username: null }, []);
   insertChat(db, { id: CHANNEL, type: "channel", title: "Canal", username: null }, []);
+  session = `panel_session=${createSession(db, sessionKey(CREDENTIALS), Date.now())}`;
   telegram = {
     leaveChat: vi.fn().mockResolvedValue(true), unbanChatMember: vi.fn().mockResolvedValue(true), unbanChatSenderChat: vi.fn().mockResolvedValue(true),
     getChatMember: vi.fn().mockResolvedValue({ status: "member", user: { id: 77, is_bot: false, first_name: "Bea", last_name: "Ruiz" } }),
   };
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued, fetchPhoto });
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => "mi_bot", onMessageQueued: queued, credentials: CREDENTIALS, fetchPhoto });
 });
 
-test("health devuelve estado, entorno y usuario del bot", async () => {
-  const r = await get("/api/health");
-  expect(await r.json()).toEqual({ status: "ok", appEnv: "development", botUsername: "mi_bot" });
+test("info devuelve entorno y usuario del bot", async () => {
+  const r = await get("/api/info");
+  expect(await r.json()).toEqual({ appEnv: "development", botUsername: "mi_bot" });
 });
 
 const inFuture = () => Math.floor(Date.now() / 1000) + 3600;
@@ -284,10 +288,10 @@ test.each(["   ", "x".repeat(501)])("una plantilla de aviso inválida da 400 leg
   expect(await r.json()).toEqual({ error: "Notice must be between 1 and 500 characters" });
 });
 
-test("health devuelve botUsername null si el bot aún no ha iniciado", async () => {
-  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, fetchPhoto });
-  const r = await get("/api/health");
-  expect(await r.json()).toEqual({ status: "ok", appEnv: "development", botUsername: null });
+test("info devuelve botUsername null si el bot aún no ha iniciado", async () => {
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, credentials: CREDENTIALS, fetchPhoto });
+  const r = await get("/api/info");
+  expect(await r.json()).toEqual({ appEnv: "development", botUsername: null });
 });
 
 test.each(["bot.localhost", "localhost:9000", "127.0.0.1:8088", "[::1]:5173"])("acepta Host %s", async (host) => {

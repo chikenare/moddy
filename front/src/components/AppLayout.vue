@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Moon, Sun } from '@lucide/vue'
+import { LogOut, Moon, Sun } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { toast } from 'vue-sonner'
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger,
@@ -9,12 +10,22 @@ import {
 import BotLogo from '@/components/BotLogo.vue'
 import AppNav, { nav } from '@/components/AppNav.vue'
 import { theme, toggleTheme } from '@/lib/theme'
+import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
 
 const route = useRoute()
 const store = useChatsStore()
 const current = computed(() => nav.find((n) => n.match(route.path))?.label ?? '')
 const isDark = computed(() => theme.value === 'dark')
+
+const auth = useAuthStore()
+async function logout() {
+  try {
+    await auth.logout()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Could not log out')
+  }
+}
 </script>
 
 <template>
@@ -42,6 +53,12 @@ const isDark = computed(() => theme.value === 'dark')
             <SidebarMenuButton @click="toggleTheme">
               <Sun v-if="isDark" /><Moon v-else />
               <span>{{ isDark ? 'Light mode' : 'Dark mode' }}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton @click="logout">
+              <LogOut />
+              <span>Log out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

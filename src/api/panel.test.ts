@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
+import { createSession, sessionKey } from "../auth/session.js";
 import { openDatabase } from "../db/connection.js";
 import { type ApiTelegram, createApi } from "./app.js";
 
@@ -9,13 +10,28 @@ let base: string;
 let withPanel: ReturnType<typeof createApi>;
 let withoutPanel: ReturnType<typeof createApi>;
 
-const make = (panelDir?: string | null) =>
-  createApi({
-    db: openDatabase(":memory:"), telegram: {} as ApiTelegram, appEnv: "development",
-    botUsername: () => "mi_bot", onMessageQueued: vi.fn(), fetchPhoto: vi.fn(), panelDir,
+const CREDENTIALS = { user: "owner", password: "correct horse battery" };
+const cookies = new WeakMap<object, string>();
+
+const make = (panelDir?: string | null) => {
+  const db = openDatabase(":memory:");
+  const app = createApi({
+    db, telegram: {} as ApiTelegram, appEnv: "development",
+    botUsername: () => "mi_bot", onMessageQueued: vi.fn(), fetchPhoto: vi.fn(), panelDir, credentials: CREDENTIALS,
   });
+  cookies.set(app, `panel_session=${createSession(db, sessionKey(CREDENTIALS), Date.now())}`);
+  return app;
+};
 const call = (app: ReturnType<typeof createApi>, path: string, init: RequestInit = {}) =>
-  app.request(`http://ignored${path}`, { ...init, headers: { Host: "bot.localhost", ...init.headers } });
+  app.request(`http://ignored${path}`, { ...init, headers: { Host: "bot.localhost", Cookie: cookies.get(app)!, ...init.headers } });
+
+test("the panel's files load without a session, so the login page can appear", async () => {
+  const r = await call(withPanel, "/", { headers: { Cookie: "" } });
+  expect(r.status).toBe(200);
+  expect(await r.text()).toBe("<html>PANEL</html>");
+  expect((await call(withPanel, "/assets/app.js", { headers: { Cookie: "" } })).status).toBe(200);
+  expect((await call(withPanel, "/api/chats", { headers: { Cookie: "" } })).status).toBe(401);
+});
 
 beforeAll(() => {
   base = mkdtempSync(join(tmpdir(), "panel-"));
@@ -69,7 +85,9 @@ test("security headers are on panel and API responses", async () => {
   for (const path of ["/", "/assets/app.js", "/api/health", "/api/nope"]) {
     const r = await call(withPanel, path);
     expect(r.headers.get("X-Frame-Options"), path).toBe("DENY");
-    expect(r.headers.get("Content-Security-Policy"), path).toBe("frame-ancestors 'none'");
+    expect(r.headers.get("Content-Security-Policy"), path).toBe(
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    );
     expect(r.headers.get("X-Content-Type-Options"), path).toBe("nosniff");
     expect(r.headers.get("Referrer-Policy"), path).toBe("same-origin");
   }

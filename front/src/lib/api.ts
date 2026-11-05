@@ -66,18 +66,26 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: () => void): void {
+  onUnauthorized = handler;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`/api${path}`, {
       method,
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
   } catch {
     throw new ApiError(0, "Could not connect to the server");
   }
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized?.();
     let message = `Error ${res.status}`;
     try {
       const data = await res.json();
@@ -92,7 +100,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 const chat = (id: number) => `/chats/${id}`;
 
 export const api = {
-  health: () => request<{ status: string; appEnv: "development" | "production"; botUsername: string | null }>("GET", "/health"),
+  // The page only appears after this answers, so a stalled tunnel must not leave it blank.
+  session: () => request<{ authenticated: boolean }>("GET", "/auth/session", undefined, AbortSignal.timeout(5000)),
+  login: (username: string, password: string) => request<{ authenticated: boolean }>("POST", "/auth/login", { username, password }),
+  logout: () => request<void>("POST", "/auth/logout"),
+  info: () => request<{ appEnv: "development" | "production"; botUsername: string | null }>("GET", "/info"),
   metrics: (days: number, chatId?: number) =>
     request<Metrics>("GET", `/metrics?days=${days}${chatId === undefined ? "" : `&chatId=${chatId}`}`),
   listChats: () => request<ChatRecord[]>("GET", "/chats"),

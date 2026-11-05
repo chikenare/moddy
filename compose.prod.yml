@@ -7,10 +7,21 @@ services:
       context: .
       target: prod
     env_file: .env
+    environment:
+      # Stops `up` before it replaces a working bot with one that cannot start.
+      PANEL_USER: ${PANEL_USER:?Set PANEL_USER in .env}
+      PANEL_PASSWORD: ${PANEL_PASSWORD:?Set PANEL_PASSWORD in .env}
     volumes:
       - data:/app/data
+    # Reach the panel with: ssh -L 9000:127.0.0.1:8088 <server>, then http://panel.localhost:9000
+    # Avoid localhost and bot.localhost: cookies ignore ports, so other local apps or a development panel would share the session.
     ports: ["127.0.0.1:8088:3000"]
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   data:

@@ -19,6 +19,8 @@ import type { AppEnv } from "../env.js";
 import { normalizeWhitelistEntry } from "../moderation/links.js";
 import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
+import type { Credentials } from "../auth/session.js";
+import { createAuth } from "./auth.js";
 import { hostOriginGuard } from "./guard.js";
 import type { PhotoFetcher } from "./photos.js";
 
@@ -100,16 +102,31 @@ function describeIssue(issue: z.core.$ZodIssue): string {
   return field ? "Invalid value" : "Invalid body";
 }
 
+// Inline styles stay allowed because Vue and the UI components set them; scripts only come from the panel itself.
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
   fetchPhoto: PhotoFetcher; panelDir?: string | null;
+  credentials: Credentials; now?: () => number;
 }): Hono {
-  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir } = deps;
+  const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir, credentials } = deps;
   const app = new Hono();
   const api = new Hono();
 
   api.use("*", hostOriginGuard);
+  const auth = createAuth({ db, credentials, now: deps.now ?? Date.now });
+  api.use("*", auth.requireSession);
+  api.route("/auth", auth.routes);
 
   type Ctx = Context<any, any, any>;
   const fail = (c: Ctx, status: ContentfulStatusCode, error: string) => c.json({ error }, status);
@@ -138,7 +155,8 @@ export function createApi(deps: {
     return chatIds;
   }
 
-  api.get("/health", (c) => c.json({ status: "ok", appEnv, botUsername: botUsername() }));
+  api.get("/health", (c) => c.json({ status: "ok" }));
+  api.get("/info", (c) => c.json({ appEnv, botUsername: botUsername() }));
   api.get("/chats", (c) => c.json(listChats(db)));
 
   api.get("/metrics", (c) => {
@@ -406,14 +424,15 @@ export function createApi(deps: {
 
   api.notFound((c) => fail(c, 404, "Route not found"));
   api.onError((e, c) => {
-    console.error("API error:", e);
+    // A client hanging up is not a fault, and logging it would let anyone who can reach the login fill the disk.
+    if ((e as NodeJS.ErrnoException).code !== "ECONNRESET") console.error("API error:", e);
     return fail(c, 500, "Internal error");
   });
 
   app.use("*", async (c, next) => {
     await next();
     c.header("X-Frame-Options", "DENY");
-    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+    c.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "same-origin");
   });

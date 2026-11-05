@@ -1,5 +1,30 @@
 import { expect, test } from "vitest";
-import { parseAppEnv, parsePort } from "./env.js";
+import { parseAppEnv, parsePort, parsePanelCredentials } from "./env.js";
+
+test("panel credentials need a user and a password of at least 12 characters", () => {
+  expect(parsePanelCredentials("admin", "twelve chars")).toEqual({ user: "admin", password: "twelve chars" });
+  for (const [user, password] of [[undefined, "twelve chars"], ["", "twelve chars"], ["admin", undefined], ["admin", ""], ["admin", "eleven char"]]) {
+    expect(() => parsePanelCredentials(user, password)).toThrow(/PANEL_/);
+  }
+});
+
+test("a password of only spaces is refused", () => {
+  expect(() => parsePanelCredentials("admin", " ".repeat(20))).toThrow(/PANEL_PASSWORD/);
+});
+
+test("credentials too long to fit in a login request are refused", () => {
+  expect(parsePanelCredentials("a".repeat(256), "b".repeat(256))).toEqual({ user: "a".repeat(256), password: "b".repeat(256) });
+  expect(() => parsePanelCredentials("a".repeat(257), "twelve chars")).toThrow(/PANEL_USER/);
+  expect(() => parsePanelCredentials("admin", "b".repeat(257))).toThrow(/PANEL_PASSWORD/);
+});
+
+test("the example password from .env.example is refused", () => {
+  expect(() => parsePanelCredentials("admin", "change-me-to-a-long-random-password")).toThrow(/PANEL_PASSWORD/);
+});
+
+test("the error never contains the password", () => {
+  expect(() => parsePanelCredentials("admin", "short")).not.toThrow(/short/);
+});
 
 test("acepta los dos entornos", () => {
   expect(parseAppEnv("development")).toBe("development");
