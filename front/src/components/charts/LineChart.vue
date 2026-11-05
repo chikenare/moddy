@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { useElementSize } from '@vueuse/core'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { formatCount, niceMax, shortDay } from '@/lib/metrics'
 
 export interface LineSeries { name: string; color: string; values: number[] }
 
 const props = defineProps<{ days: string[]; series: LineSeries[]; label: string; height?: number }>()
 
+const { t, locale } = useI18n()
 const box = ref<HTMLElement | null>(null)
 const { width } = useElementSize(box)
 const H = computed(() => props.height ?? 200)
@@ -68,12 +70,12 @@ const single = computed(() => props.series.length === 1)
         @pointermove="move" @pointerleave="active = null" @keydown="key" @blur="active = null"
       >
         <g>
-          <template v-for="t in ticks" :key="t">
-            <line :x1="PAD.left" :x2="w - PAD.right" :y1="y(t)" :y2="y(t)" :stroke="t === 0 ? 'var(--viz-axis)' : 'var(--viz-grid)'" stroke-width="1" />
-            <text :x="PAD.left - 6" :y="y(t)" dy="0.32em" text-anchor="end" font-size="11" fill="var(--viz-muted)">{{ formatCount(t) }}</text>
+          <template v-for="tick in ticks" :key="tick">
+            <line :x1="PAD.left" :x2="w - PAD.right" :y1="y(tick)" :y2="y(tick)" :stroke="tick === 0 ? 'var(--viz-axis)' : 'var(--viz-grid)'" stroke-width="1" />
+            <text :x="PAD.left - 6" :y="y(tick)" dy="0.32em" text-anchor="end" font-size="11" fill="var(--viz-muted)">{{ formatCount(tick, locale) }}</text>
           </template>
           <text v-for="i in xLabels" :key="i" :x="x(i)" :y="H - 6" font-size="11" fill="var(--viz-muted)"
-            :text-anchor="i === 0 ? 'start' : i === days.length - 1 ? 'end' : 'middle'">{{ shortDay(days[i]!) }}</text>
+            :text-anchor="i === 0 ? 'start' : i === days.length - 1 ? 'end' : 'middle'">{{ shortDay(days[i]!, locale) }}</text>
         </g>
 
         <path v-if="single" :d="areaPath(series[0]!.values)" :fill="series[0]!.color" fill-opacity="0.1" />
@@ -93,26 +95,26 @@ const single = computed(() => props.series.length === 1)
         class="pointer-events-none absolute top-1 z-10 min-w-28 rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md"
         :style="tipLeft ? { right: `${w - x(active) + 10}px` } : { left: `${x(active) + 10}px` }"
       >
-        <div class="mb-1 text-muted-foreground">{{ shortDay(days[active]!) }}</div>
+        <div class="mb-1 text-muted-foreground">{{ shortDay(days[active]!, locale) }}</div>
         <div v-for="s in series" :key="s.name" class="flex items-center justify-between gap-3">
           <span class="inline-flex items-center gap-1.5 text-muted-foreground">
             <span class="h-0.5 w-3 rounded-full" :style="{ background: s.color }" />{{ s.name }}
           </span>
-          <span class="font-semibold tabular-nums text-foreground">{{ s.values[active]!.toLocaleString('en-US') }}</span>
+          <span class="font-semibold tabular-nums text-foreground">{{ s.values[active]!.toLocaleString(locale) }}</span>
         </div>
       </div>
     </div>
 
     <details class="text-xs text-muted-foreground">
-      <summary class="w-fit cursor-pointer select-none hover:text-foreground">View as table</summary>
+      <summary class="w-fit cursor-pointer select-none hover:text-foreground">{{ t('chart.viewTable') }}</summary>
       <div class="mt-2 max-h-56 overflow-auto rounded-md border">
         <table class="w-full">
           <thead class="sticky top-0 bg-card text-left">
-            <tr><th class="px-2 py-1 font-medium">Day</th><th v-for="s in series" :key="s.name" class="px-2 py-1 text-right font-medium">{{ s.name }}</th></tr>
+            <tr><th class="px-2 py-1 font-medium">{{ t('chart.day') }}</th><th v-for="s in series" :key="s.name" class="px-2 py-1 text-right font-medium">{{ s.name }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="(d, i) in days" :key="d" class="border-t">
-              <td class="px-2 py-1">{{ shortDay(d) }}</td>
+              <td class="px-2 py-1">{{ shortDay(d, locale) }}</td>
               <td v-for="s in series" :key="s.name" class="px-2 py-1 text-right tabular-nums">{{ s.values[i] }}</td>
             </tr>
           </tbody>

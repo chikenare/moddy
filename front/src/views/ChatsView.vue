@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, TriangleAlert, Users } from '@lucide/vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -15,6 +16,7 @@ import type { ChatRecord } from '@/lib/api'
 import { activeFilters } from '@/lib/chats'
 import { useChatsStore } from '@/stores/chats'
 
+const { t } = useI18n()
 const store = useChatsStore()
 
 // Coming back from Telegram, the list must show the newly added group.
@@ -29,15 +31,13 @@ const addGroupUrl = computed(() =>
   store.botUsername ? `https://t.me/${store.botUsername}?startgroup&admin=delete_messages+restrict_members` : null,
 )
 
-const typeLabels = { group: 'Group', supergroup: 'Supergroup', channel: 'Channel' } as const
-
 const isInactive = (c: ChatRecord) => c.botStatus === 'left' || c.botStatus === 'kicked'
 const needsAdmin = (c: ChatRecord) => c.type !== 'channel' && !isInactive(c) && (!c.canDelete || !c.canRestrict)
 
 const summary = computed(() => {
   const total = store.chats.length
   const on = store.chats.filter((c) => !isInactive(c) && c.moderationEnabled).length
-  return `${total} ${total === 1 ? 'group' : 'groups'}, ${on} with moderation on`
+  return t('chats.summary', { count: total, on }, total)
 })
 
 const target = ref<ChatRecord | null>(null)
@@ -51,10 +51,10 @@ async function confirmForget() {
   busy.value = true
   try {
     await store.forget(target.value.id)
-    toast.success('Chat forgotten')
+    toast.success(t('chats.forgotten'))
     dialogOpen.value = false
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Could not forget the chat')
+    toast.error(e instanceof Error ? e.message : t('chats.forgetFailed'))
   } finally {
     busy.value = false
   }
@@ -67,23 +67,23 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
   <section class="space-y-6">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div class="space-y-1">
-        <h1 class="text-2xl font-semibold tracking-tight">Groups</h1>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ t('chats.title') }}</h1>
         <p v-if="store.chats.length" class="text-sm text-muted-foreground">{{ summary }}</p>
       </div>
       <Button v-if="addGroupUrl" as="a" :href="addGroupUrl" target="_blank" rel="noopener noreferrer">
         <Plus />
-        Add group
+        {{ t('chats.addGroup') }}
       </Button>
     </div>
 
-    <p v-if="store.loading && !store.chats.length" class="text-sm text-muted-foreground">Loading...</p>
+    <p v-if="store.loading && !store.chats.length" class="text-sm text-muted-foreground">{{ t('common.loading') }}</p>
     <p v-else-if="store.error && !store.chats.length" class="text-sm text-destructive">{{ store.error }}</p>
 
     <div v-else-if="!store.chats.length" class="rounded-xl border border-dashed p-8 text-center">
       <Users class="mx-auto mb-3 size-8 text-muted-foreground" />
-      <p class="font-medium">No groups yet</p>
+      <p class="font-medium">{{ t('chats.emptyTitle') }}</p>
       <p class="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-        Add the bot to a group and give it admin rights to delete messages and ban users. The group will appear here switched off.
+        {{ t('chats.emptyBody') }}
       </p>
     </div>
 
@@ -101,35 +101,35 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
                 :to="`/chats/${c.id}`"
                 class="block truncate font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
               >{{ c.title }}</RouterLink>
-              <div class="text-sm text-muted-foreground">{{ typeLabels[c.type] }}</div>
+              <div class="text-sm text-muted-foreground">{{ t(`chatType.${c.type}`) }}</div>
             </div>
-            <Badge v-if="isInactive(c)" variant="outline">Inactive</Badge>
-            <Badge v-else-if="c.moderationEnabled" variant="default">On</Badge>
-            <Badge v-else variant="secondary">Off</Badge>
+            <Badge v-if="isInactive(c)" variant="outline">{{ t('chats.inactive') }}</Badge>
+            <Badge v-else-if="c.moderationEnabled" variant="default">{{ t('common.on') }}</Badge>
+            <Badge v-else variant="secondary">{{ t('common.off') }}</Badge>
           </div>
 
           <div class="flex flex-wrap gap-1.5 text-xs">
             <template v-if="c.type === 'channel'">
-              <span class="text-muted-foreground">Channels are not moderated. Set up its discussion group instead.</span>
+              <span class="text-muted-foreground">{{ t('chats.channelNote') }}</span>
             </template>
             <template v-else-if="isInactive(c)">
-              <span class="text-muted-foreground">The bot is no longer in this group.</span>
+              <span class="text-muted-foreground">{{ t('chats.inactiveNote') }}</span>
             </template>
             <template v-else>
-              <Badge v-for="f in activeFilters(c)" :key="f" variant="outline" class="font-normal">{{ f }}</Badge>
-              <Badge v-if="c.autoRepliesEnabled" variant="outline" class="font-normal">Auto replies</Badge>
-              <span v-if="!c.moderationEnabled" class="text-muted-foreground">Moderation is off: nothing is being filtered.</span>
-              <span v-else-if="!activeFilters(c).length && !c.autoRepliesEnabled" class="text-muted-foreground">No filters turned on yet.</span>
+              <Badge v-for="f in activeFilters(c)" :key="f" variant="outline" class="font-normal">{{ t(`filter.${f}`) }}</Badge>
+              <Badge v-if="c.autoRepliesEnabled" variant="outline" class="font-normal">{{ t('chat.tab.autoReplies') }}</Badge>
+              <span v-if="!c.moderationEnabled" class="text-muted-foreground">{{ t('chats.moderationOff') }}</span>
+              <span v-else-if="!activeFilters(c).length && !c.autoRepliesEnabled" class="text-muted-foreground">{{ t('chats.noFilters') }}</span>
             </template>
           </div>
 
           <Alert v-if="needsAdmin(c)" variant="destructive">
             <TriangleAlert />
-            <AlertDescription>Make the bot an admin with permission to delete messages and ban users</AlertDescription>
+            <AlertDescription>{{ t('chats.needsAdmin') }}</AlertDescription>
           </Alert>
 
           <div class="relative z-10 mt-auto flex justify-end">
-            <Button variant="outline" size="sm" @click="askForget(c)">Leave and forget</Button>
+            <Button variant="outline" size="sm" @click="askForget(c)">{{ t('chats.leave') }}</Button>
           </div>
         </CardContent>
       </Card>
@@ -138,15 +138,14 @@ watch(() => store.error, (msg) => { if (msg) toast.error(msg) })
     <AlertDialog v-model:open="dialogOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Leave {{ target?.title }}?</AlertDialogTitle>
+          <AlertDialogTitle>{{ t('chats.leaveTitle', { title: target?.title }) }}</AlertDialogTitle>
           <AlertDialogDescription>
-            The bot will leave the chat, and its settings, lists and event log will be deleted.
-            Bans already applied stay in effect on Telegram and can't be undone from here.
+            {{ t('chats.leaveBody') }}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="busy">Cancel</AlertDialogCancel>
-          <AlertDialogAction :disabled="busy" @click.prevent="confirmForget">Leave and forget</AlertDialogAction>
+          <AlertDialogCancel :disabled="busy">{{ t('common.cancel') }}</AlertDialogCancel>
+          <AlertDialogAction :disabled="busy" @click.prevent="confirmForget">{{ t('chats.leave') }}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

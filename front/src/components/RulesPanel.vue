@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import RichTextEditor from '@/components/RichTextEditor.vue'
@@ -9,6 +10,7 @@ import { useChatDetailStore } from '@/stores/chatDetail'
 
 const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
+const { t } = useI18n()
 
 const MAX = 4000
 const saved = (): FormattedMessage => ({ text: store.chat!.rules, entities: store.chat!.rulesEntities })
@@ -47,9 +49,9 @@ async function save() {
   saving = true
   try {
     await store.update({ rules: draft.value.text, rulesEntities: draft.value.entities })
-    toast.success('Rules saved')
+    toast.success(t('rules.saved'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Could not save the rules')
+    toast.error(e instanceof Error ? e.message : t('rules.saveFailed'))
   } finally {
     // The store's revert reaches the watcher on the next flush; it must still see `saving`.
     await nextTick()
@@ -62,13 +64,13 @@ async function save() {
 
 <template>
   <form class="space-y-3" @submit.prevent="save">
-    <p class="text-sm text-muted-foreground">
-      Members see these with <code>/rules</code> in the group, at most once a minute. Leave it empty to turn the command off.
-    </p>
-    <RichTextEditor v-model="draft" label="Group rules" placeholder="Group rules" />
+    <i18n-t keypath="rules.hint" tag="p" class="text-sm text-muted-foreground">
+      <template #command><code>/rules</code></template>
+    </i18n-t>
+    <RichTextEditor v-model="draft" :label="t('rules.label')" :placeholder="t('rules.label')" />
     <div class="flex items-center justify-between gap-3">
       <span class="text-xs" :class="draft.text.length > MAX ? 'text-destructive' : 'text-muted-foreground'">{{ draft.text.length }} / {{ MAX }}</span>
-      <Button type="submit" :disabled="busy || !dirty || draft.text.length > MAX">Save</Button>
+      <Button type="submit" :disabled="busy || !dirty || draft.text.length > MAX">{{ t('common.save') }}</Button>
     </div>
   </form>
 </template>

@@ -1,4 +1,4 @@
-import type { ChatRecord } from './api'
+import type { ChatRecord, FilterName } from './api'
 
 export function initials(title: string): string {
   const words = title.split(/\s+/).map((w) => Array.from(w).find((ch) => /[\p{L}\p{N}]/u.test(ch))).filter(Boolean) as string[]
@@ -16,12 +16,12 @@ export function avatarHue(id: number): number {
 type FilterFlags = Pick<ChatRecord, 'moderationEnabled' | 'linkFilterEnabled' | 'wordFilterEnabled' | 'floodFilterEnabled' | 'botFilterEnabled' | 'autoRepliesEnabled'>
 
 /** Filters that are really acting: with moderation off none of them run. */
-export function activeFilters(c: FilterFlags): string[] {
+export function activeFilters(c: FilterFlags): FilterName[] {
   if (!c.moderationEnabled) return []
-  const out: string[] = []
-  if (c.linkFilterEnabled) out.push('Links')
-  if (c.wordFilterEnabled) out.push('Words')
-  if (c.floodFilterEnabled) out.push('Flood')
-  if (c.botFilterEnabled) out.push('Bots')
+  const out: FilterName[] = []
+  if (c.linkFilterEnabled) out.push('link')
+  if (c.wordFilterEnabled) out.push('word')
+  if (c.floodFilterEnabled) out.push('flood')
+  if (c.botFilterEnabled) out.push('bot')
   return out
 }

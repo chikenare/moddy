@@ -1,3 +1,5 @@
+import { i18n, t } from '@/i18n'
+
 export type RepeatKind = 'daily' | 'weekdays' | 'monthday' | 'hours' | 'custom'
 
 export interface RepeatForm {
@@ -59,15 +61,25 @@ export function parseCron(cron: string): RepeatForm {
   return custom
 }
 
-export const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** Short weekday names, Sunday first, in the panel's language. */
+export function weekdayNames(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' })
+  // 2023-01-01 was a Sunday.
+  return Array.from({ length: 7 }, (_, d) => fmt.format(new Date(Date.UTC(2023, 0, 1 + d))))
+}
 
 export function describeRepeat(cron: string): string {
   const f = parseCron(cron)
+  const { time } = f
   switch (f.kind) {
-    case 'daily': return `Every day at ${f.time}`
-    case 'weekdays': return `Every ${f.weekdays.map((d) => WEEKDAY_NAMES[d]).join(', ')} at ${f.time}`
-    case 'monthday': return `Day ${f.dayOfMonth} of every month at ${f.time}`
-    case 'hours': return `Every ${f.everyHours === 1 ? 'hour' : `${f.everyHours} hours`}, on the hour`
-    case 'custom': return `Custom schedule: ${f.custom}`
+    case 'daily': return t('schedule.daily', { time })
+    case 'weekdays': {
+      const names = weekdayNames(i18n.global.locale.value)
+      const days = new Intl.ListFormat(i18n.global.locale.value, { type: 'conjunction' }).format(f.weekdays.map((d) => names[d]!))
+      return t('schedule.weekdays', { days, time })
+    }
+    case 'monthday': return t('schedule.monthday', { day: f.dayOfMonth, time })
+    case 'hours': return t('schedule.hours', f.everyHours)
+    case 'custom': return t('schedule.custom', { cron: f.custom })
   }
 }

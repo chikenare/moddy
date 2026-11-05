@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -8,18 +9,15 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { EventRecord, EventSource } from '@/lib/api'
+import type { EventRecord } from '@/lib/api'
 import { useChatDetailStore } from '@/stores/chatDetail'
 
 const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
+const { t, locale } = useI18n()
 
-const filterLabels: Record<EventSource, string> = {
-  link: 'Links', word: 'Words', flood: 'Flood', bot: 'Bots', command: 'Command',
-}
-
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
-const when = (ts: number) => fmt.format(new Date(ts * 1000))
+const fmt = computed(() => new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'medium' }))
+const when = (ts: number) => fmt.value.format(new Date(ts * 1000))
 
 const isActiveBan = (e: EventRecord) => e.banOk === true && !e.dryRun && e.unbannedAt === null
 const canAddToStaff = (e: EventRecord) =>
@@ -38,19 +36,20 @@ function askAddToStaff(e: EventRecord) {
 async function addToStaff(e: EventRecord) {
   try {
     await store.addStaff(String(e.senderId))
-    toast.success(`${e.senderName} added to staff`)
+    toast.success(t('history.addedToStaff', { name: e.senderName }))
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Could not add to staff')
+    toast.error(err instanceof Error ? err.message : t('history.addToStaffFailed'))
   }
 }
 
 function outcome(e: EventRecord) {
-  if (e.action === 'warn') return 'Warned'
-  if (e.action === 'unban') return e.error?.includes('unban:') ? 'No effect' : 'Unbanned'
-  const parts: string[] = []
-  if (e.deleteOk) parts.push('Deleted')
-  if (e.banOk) parts.push(e.unbannedAt !== null ? 'Banned (undone)' : 'Banned')
-  return parts.join(' and ') || 'No effect'
+  if (e.action === 'warn') return t('history.outcome.warned')
+  if (e.action === 'unban') return e.error?.includes('unban:') ? t('history.outcome.noEffect') : t('history.outcome.unbanned')
+  const undone = e.unbannedAt !== null
+  if (e.deleteOk && e.banOk) return undone ? t('history.outcome.deletedBannedUndone') : t('history.outcome.deletedBanned')
+  if (e.banOk) return undone ? t('history.outcome.bannedUndone') : t('history.outcome.banned')
+  if (e.deleteOk) return t('history.outcome.deleted')
+  return t('history.outcome.noEffect')
 }
 
 const target = ref<EventRecord | null>(null)
@@ -65,10 +64,10 @@ async function confirmUnban() {
   busy.value = true
   try {
     await store.unban(target.value.id)
-    toast.success('User unbanned')
+    toast.success(t('history.unbanned'))
     dialogOpen.value = false
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Could not unban')
+    toast.error(e instanceof Error ? e.message : t('history.unbanFailed'))
   } finally {
     busy.value = false
   }
@@ -79,7 +78,7 @@ async function more() {
   try {
     await store.loadMoreEvents()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Could not load more')
+    toast.error(e instanceof Error ? e.message : t('history.loadMoreFailed'))
   } finally {
     loadingMore.value = false
   }
@@ -88,16 +87,16 @@ async function more() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="!store.events.length" class="text-sm text-muted-foreground">No events yet</p>
+    <p v-if="!store.events.length" class="text-sm text-muted-foreground">{{ t('history.empty') }}</p>
     <div v-else class="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Sender</TableHead>
-            <TableHead>Filter</TableHead>
-            <TableHead>Match</TableHead>
-            <TableHead>Result</TableHead>
+            <TableHead>{{ t('history.date') }}</TableHead>
+            <TableHead>{{ t('history.sender') }}</TableHead>
+            <TableHead>{{ t('history.filter') }}</TableHead>
+            <TableHead>{{ t('history.match') }}</TableHead>
+            <TableHead>{{ t('history.result') }}</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -105,7 +104,7 @@ async function more() {
           <TableRow v-for="e in store.events" :key="e.id" class="align-top">
             <TableCell class="whitespace-nowrap">{{ when(e.createdAt) }}</TableCell>
             <TableCell class="max-w-40 break-words whitespace-normal">{{ e.senderName }}</TableCell>
-            <TableCell>{{ filterLabels[e.filter] }}</TableCell>
+            <TableCell>{{ t(`filter.${e.filter}`) }}</TableCell>
             <TableCell class="max-w-64 whitespace-normal">
               <div class="break-all">{{ e.matched }}</div>
               <div v-if="e.text" class="mt-1 break-words text-xs text-muted-foreground">{{ e.text }}</div>
@@ -113,14 +112,14 @@ async function more() {
             <TableCell class="max-w-48 whitespace-normal">
               <div class="flex flex-wrap items-center gap-1">
                 <span>{{ outcome(e) }}</span>
-                <Badge v-if="e.dryRun" variant="outline">Simulated</Badge>
+                <Badge v-if="e.dryRun" variant="outline">{{ t('history.simulated') }}</Badge>
               </div>
               <div v-if="e.error" class="mt-1 break-words text-xs text-destructive">{{ e.error }}</div>
             </TableCell>
             <TableCell>
               <div class="flex flex-col items-start gap-1">
-                <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">Unban</Button>
-                <Button v-if="canAddToStaff(e)" variant="outline" size="sm" @click="askAddToStaff(e)">Add to staff</Button>
+                <Button v-if="isActiveBan(e)" variant="outline" size="sm" @click="askUnban(e)">{{ t('history.unban') }}</Button>
+                <Button v-if="canAddToStaff(e)" variant="outline" size="sm" @click="askAddToStaff(e)">{{ t('history.addToStaff') }}</Button>
               </div>
             </TableCell>
           </TableRow>
@@ -128,20 +127,20 @@ async function more() {
       </Table>
     </div>
     <Button v-if="store.nextBefore !== null" variant="outline" :disabled="loadingMore" @click="more">
-      Load more
+      {{ t('history.loadMore') }}
     </Button>
 
     <AlertDialog v-model:open="staffDialogOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Add {{ staffTarget?.senderName }} to staff?</AlertDialogTitle>
+          <AlertDialogTitle>{{ t('history.staffTitle', { name: staffTarget?.senderName }) }}</AlertDialogTitle>
           <AlertDialogDescription>
-            Telegram commands are on in this group, so besides skipping the filters they could ban, warn and unban other members.
+            {{ t('history.staffBody') }}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction @click="addToStaff(staffTarget!)">Add to staff</AlertDialogAction>
+          <AlertDialogCancel>{{ t('common.cancel') }}</AlertDialogCancel>
+          <AlertDialogAction @click="addToStaff(staffTarget!)">{{ t('history.addToStaff') }}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -149,14 +148,14 @@ async function more() {
     <AlertDialog v-model:open="dialogOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Unban {{ target?.senderName }}?</AlertDialogTitle>
+          <AlertDialogTitle>{{ t('history.unbanTitle', { name: target?.senderName }) }}</AlertDialogTitle>
           <AlertDialogDescription>
-            They can rejoin, but must do it themselves: the bot won't add them back to the group.
+            {{ t('history.unbanBody') }}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="busy">Cancel</AlertDialogCancel>
-          <AlertDialogAction :disabled="busy" @click.prevent="confirmUnban">Unban</AlertDialogAction>
+          <AlertDialogCancel :disabled="busy">{{ t('common.cancel') }}</AlertDialogCancel>
+          <AlertDialogAction :disabled="busy" @click.prevent="confirmUnban">{{ t('history.unban') }}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -1,8 +1,8 @@
 import type { StatTotals } from "@/lib/api";
 
-export function formatCount(n: number): string {
-  if (n < 10_000) return n.toLocaleString("en-US");
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+export function formatCount(n: number, locale = "en-US"): string {
+  if (n < 10_000) return n.toLocaleString(locale);
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
 export interface Delta { direction: "up" | "down" | "flat" | "new"; text: string }
@@ -16,8 +16,8 @@ export function delta(current: number, previous: number): Delta {
   return { direction: pct > 0 ? "up" : "down", text: `${Math.abs(pct)}%` };
 }
 
-export function shortDay(day: string): string {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+export function shortDay(day: string, locale = "en-US"): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(locale, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export function ruleHits(t: StatTotals): number {

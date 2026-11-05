@@ -34,7 +34,8 @@ const Spoiler = Mark.create({
   },
 })
 
-export function richTextExtensions(placeholder = ''): Extensions {
+// A function placeholder is read on every redraw, so it can follow a language change.
+export function richTextExtensions(placeholder: string | (() => string) = ''): Extensions {
   return [
     StarterKit.configure({
       heading: false, bulletList: false, orderedList: false, listItem: false, listKeymap: false,

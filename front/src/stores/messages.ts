@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { api, type FormattedMessage, type RecurringInput, type RecurringMessage, type ScheduledMessage } from "@/lib/api";
+import { t } from "@/i18n";
 
 export const useMessagesStore = defineStore("messages", () => {
   const messages = ref<ScheduledMessage[]>([]);
@@ -16,7 +17,7 @@ export const useMessagesStore = defineStore("messages", () => {
       recurring.value = rules;
       error.value = null;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : "Unknown error";
+      error.value = e instanceof Error ? e.message : t("common.unknownError");
     } finally {
       loading.value = false;
     }

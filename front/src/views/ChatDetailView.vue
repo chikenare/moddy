@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft } from '@lucide/vue'
 import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,10 +16,10 @@ import WordsPanel from '@/components/WordsPanel.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useChatDetailStore } from '@/stores/chatDetail'
 
+const { t } = useI18n()
 const route = useRoute()
 const id = Number(route.params.id)
 const store = useChatDetailStore(id)
-const typeLabels = { group: 'Group', supergroup: 'Supergroup', channel: 'Channel' } as const
 const chat = computed(() => store.chat)
 
 onMounted(() => store.load())
@@ -27,10 +28,10 @@ onMounted(() => store.load())
 <template>
   <section class="max-w-3xl space-y-4">
     <RouterLink to="/groups" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <ArrowLeft class="size-4" /> Groups
+      <ArrowLeft class="size-4" /> {{ t('nav.groups') }}
     </RouterLink>
 
-    <p v-if="store.loading && !chat" class="text-sm text-muted-foreground">Loading...</p>
+    <p v-if="store.loading && !chat" class="text-sm text-muted-foreground">{{ t('common.loading') }}</p>
     <p v-else-if="store.error && !chat" class="text-sm text-destructive">{{ store.error }}</p>
 
     <template v-else-if="chat">
@@ -38,26 +39,26 @@ onMounted(() => store.load())
         <ChatAvatar :chat="chat" class="size-14 text-lg" />
         <div class="min-w-0">
           <h1 class="break-words text-2xl font-semibold tracking-tight">{{ chat.title }}</h1>
-          <p class="text-sm text-muted-foreground">{{ typeLabels[chat.type] }}</p>
+          <p class="text-sm text-muted-foreground">{{ t(`chatType.${chat.type}`) }}</p>
         </div>
       </div>
 
       <Alert v-if="chat.type === 'channel'">
         <AlertDescription>
-          Only admins post in a channel. To moderate its comments, add the bot to its discussion group and configure it there.
+          {{ t('chat.channelAlert') }}
         </AlertDescription>
       </Alert>
 
       <Tabs v-else default-value="overview" :unmount-on-hide="false" class="gap-4">
         <TabsList class="h-auto w-full flex-wrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="filters">Filters</TabsTrigger>
-          <TabsTrigger value="words">Words</TabsTrigger>
-          <TabsTrigger value="whitelist">Whitelist</TabsTrigger>
-          <TabsTrigger value="staff">Staff</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="auto-replies">Auto replies</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="overview">{{ t('chat.tab.overview') }}</TabsTrigger>
+          <TabsTrigger value="filters">{{ t('chat.tab.filters') }}</TabsTrigger>
+          <TabsTrigger value="words">{{ t('chat.tab.words') }}</TabsTrigger>
+          <TabsTrigger value="whitelist">{{ t('chat.tab.whitelist') }}</TabsTrigger>
+          <TabsTrigger value="staff">{{ t('chat.tab.staff') }}</TabsTrigger>
+          <TabsTrigger value="rules">{{ t('chat.tab.rules') }}</TabsTrigger>
+          <TabsTrigger value="auto-replies">{{ t('chat.tab.autoReplies') }}</TabsTrigger>
+          <TabsTrigger value="history">{{ t('chat.tab.history') }}</TabsTrigger>
         </TabsList>
         <TabsContent value="overview"><OverviewPanel :chat-id="id" /></TabsContent>
         <TabsContent value="filters"><FiltersPanel :id="id" /></TabsContent>

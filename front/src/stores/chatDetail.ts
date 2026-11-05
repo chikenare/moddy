@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { api, type AutoReply, type ChatRecord, type ChatSettings, type EventRecord, type FormattedMessage, type StaffMember } from "@/lib/api";
+import { t } from "@/i18n";
 
 export function useChatDetailStore(id: number) {
   return defineStore(`chatDetail:${id}`, () => {
@@ -29,7 +30,7 @@ export function useChatDetailStore(id: number) {
         events.value = ev.events;
         nextBefore.value = ev.nextBefore;
       } catch (e) {
-        error.value = e instanceof Error ? e.message : "Unknown error";
+        error.value = e instanceof Error ? e.message : t("common.unknownError");
       } finally {
         loading.value = false;
       }

@@ -1,3 +1,5 @@
+import { t } from "@/i18n";
+
 export type ChatType = "group" | "supergroup" | "channel";
 export type FilterAction = "delete" | "delete_ban";
 export type FilterName = "link" | "word" | "flood" | "bot";
@@ -90,13 +92,13 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
       signal,
     });
   } catch {
-    throw new ApiError(0, "Could not connect to the server");
+    throw new ApiError(0, t("common.connectionError"));
   }
   if (!res.ok) {
     // At login a 401 only means a wrong password. The session check never sends one, so it can only come from
     // something in between, and reloading would just ask again. Anywhere else the session has ended.
     if (res.status === 401 && path !== "/auth/login" && path !== "/auth/session") onUnauthorized?.();
-    let message = `Error ${res.status}`;
+    let message = t("common.httpError", { status: res.status });
     try {
       const data = await res.json();
       if (typeof data?.error === "string") message = data.error;
