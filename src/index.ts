@@ -71,6 +71,7 @@ const api = createApi({
   onMessageQueued: () => scheduler.kick(),
   fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
   panelDir: config.panelDir,
+  panelHost: config.panelHost,
   credentials: config.panelCredentials,
 });
 const server = startApiServer(api.fetch, config.apiPort);

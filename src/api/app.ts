@@ -116,14 +116,14 @@ const CONTENT_SECURITY_POLICY = [
 export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
-  fetchPhoto: PhotoFetcher; panelDir?: string | null;
+  fetchPhoto: PhotoFetcher; panelDir?: string | null; panelHost?: string | null;
   credentials: Credentials; now?: () => number;
 }): Hono {
   const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir, credentials } = deps;
   const app = new Hono();
   const api = new Hono();
 
-  api.use("*", hostOriginGuard);
+  api.use("*", hostOriginGuard(deps.panelHost));
   const auth = createAuth({ db, credentials, now: deps.now ?? Date.now });
   api.use("*", auth.requireSession);
   api.route("/auth", auth.routes);

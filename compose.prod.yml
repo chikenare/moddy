@@ -1,27 +1,39 @@
-name: telegram-bot
-
+# For Dokploy: set the variables below in the Environment tab and, in the Domains tab,
+# point PANEL_HOST at this service on port 3000 with HTTPS on.
 services:
   bot:
     image: registry.delirio.org/chiken/telegram-bot:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      target: prod
-    env_file: .env
     environment:
-      # Stops `up` before it replaces a working bot with one that cannot start.
-      PANEL_USER: ${PANEL_USER:?Set PANEL_USER in .env}
-      PANEL_PASSWORD: ${PANEL_PASSWORD:?Set PANEL_PASSWORD in .env}
+      # A missing value stops the deploy before it replaces a working bot.
+      BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
+      APP_ENV: production
+      PANEL_USER: ${PANEL_USER:?Set PANEL_USER}
+      PANEL_PASSWORD: ${PANEL_PASSWORD:?Set PANEL_PASSWORD}
+      PANEL_HOST: ${PANEL_HOST:?Set PANEL_HOST to the panel domain}
     volumes:
       - data:/app/data
-    # Reach the panel with: ssh -L 9000:127.0.0.1:8088 <server>, then http://panel.localhost:9000
-    # Avoid localhost and bot.localhost: cookies ignore ports, so other local apps or a development panel would share the session.
-    ports: ["127.0.0.1:8088:3000"]
+    networks:
+      - dokploy-network
     restart: unless-stopped
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: "3"
+    # One instance only, and the old one stops first. Telegram allows a single process to poll a
+    # token: a second one gets 409 and exits. Updates wait at Telegram during the restart.
+    # update_config only applies when Dokploy deploys this as a Stack.
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   data:

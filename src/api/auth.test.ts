@@ -309,6 +309,24 @@ test.each(["bot.localhost", "panel.localhost:9000"])("the panel answers on %s", 
   expect((await send("GET", "/api/health", undefined, { Host })).status).toBe(200);
 });
 
+test("a domain is refused unless it is the configured panel host", async () => {
+  const onDomain = createApi({
+    db, telegram: {} as ApiTelegram, appEnv: "production", botUsername: () => null, onMessageQueued: vi.fn(),
+    fetchPhoto: vi.fn(async () => null), credentials: CREDENTIALS, now: () => clock, panelHost: "panel.example.com",
+  });
+  const https = { Host: "panel.example.com", Origin: "https://panel.example.com", "X-Forwarded-Proto": "https" };
+  const r = await login(undefined, undefined, https, onDomain);
+  expect(r.status).toBe(200);
+  expect(r.headers.get("Set-Cookie")).toContain("Secure");
+
+  expect((await login(undefined, undefined, https, app)).status).toBe(403);
+  for (const Host of ["evil.example", "panel.example.com.evil.example", "xpanel.example.com"]) {
+    expect((await send("GET", "/api/health", undefined, { Host }, onDomain)).status).toBe(403);
+  }
+  const foreign = { Host: "panel.example.com", Origin: "https://evil.example" };
+  expect((await login(undefined, undefined, foreign, onDomain)).status).toBe(403);
+});
+
 test.each(["HEAD", "OPTIONS"])("%s on a protected route needs a session too", async (method) => {
   expect((await send(method, "/api/chats")).status).toBe(401);
 });

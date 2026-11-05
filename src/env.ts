@@ -21,6 +21,15 @@ export function parsePanelCredentials(user: string | undefined, password: string
   return { user, password };
 }
 
+const DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+export function parsePanelHost(value: string | undefined): string | null {
+  if (!value) return null;
+  const host = value.toLowerCase();
+  if (!DOMAIN.test(host)) throw new Error(`PANEL_HOST must be a domain like panel.example.com, without https:// or a port (got: ${JSON.stringify(value)})`);
+  return host;
+}
+
 export function parsePort(value: string | undefined): number {
   if (value === undefined) return 3000;
   const port = /^\d+$/.test(value) ? Number(value) : NaN;

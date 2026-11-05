@@ -1,5 +1,18 @@
 import { expect, test } from "vitest";
-import { parseAppEnv, parsePort, parsePanelCredentials } from "./env.js";
+import { parseAppEnv, parsePanelHost, parsePort, parsePanelCredentials } from "./env.js";
+
+test("the panel host is optional and normalized", () => {
+  expect(parsePanelHost(undefined)).toBeNull();
+  expect(parsePanelHost("")).toBeNull();
+  expect(parsePanelHost("Panel.Example.com")).toBe("panel.example.com");
+});
+
+test.each(["https://panel.example.com", "panel.example.com/", "panel.example.com:443", "localhost", "panel example.com", "*.example.com"])(
+  "the panel host refuses %j",
+  (value) => {
+    expect(() => parsePanelHost(value)).toThrow(/PANEL_HOST/);
+  },
+);
 
 test("panel credentials need a user and a password of at least 12 characters", () => {
   expect(parsePanelCredentials("admin", "twelve chars")).toEqual({ user: "admin", password: "twelve chars" });
