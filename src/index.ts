@@ -100,7 +100,9 @@ const shutdown = async () => {
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
-await bot.api.deleteMyCommands();
+// Only the menu: a failure here must not stop the bot from moderating.
+try {
+  await bot.api.deleteMyCommands();
 await bot.api.setMyCommands([{ command: "help", description: "Show help" }], { scope: { type: "all_private_chats" } });
 const RULES_COMMAND = { command: "rules", description: "Show the group rules" };
 await bot.api.setMyCommands([RULES_COMMAND], { scope: { type: "all_group_chats" } });
@@ -110,6 +112,9 @@ await bot.api.setMyCommands([
   { command: "unban", description: "Lift a ban and clear their warnings" },
   { command: "warn", description: "Warn someone; too many warnings lead to a ban" },
 ], { scope: { type: "all_chat_administrators" } });
+} catch (e) {
+  console.error("Could not update the command menu:", e);
+}
 
 stats.start();
 scheduler.start();
