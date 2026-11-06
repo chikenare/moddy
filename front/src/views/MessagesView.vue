@@ -18,7 +18,7 @@ import ChatAvatar from '@/components/ChatAvatar.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api, type FormattedMessage, type RecurringMessage, type ScheduledMessage, type TargetStatus } from '@/lib/api'
 import { EMPTY_MESSAGE } from '@/lib/formatting'
-import { buildCron, DEFAULT_REPEAT, describeRepeat, HOUR_STEPS, parseCron, type RepeatForm, type RepeatKind, weekdayNames } from '@/lib/schedule'
+import { buildCron, DEFAULT_REPEAT, describeRepeat, HOUR_STEPS, parseCron, type RepeatForm, type RepeatKind, weekdayLabels } from '@/lib/schedule'
 import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
 
@@ -60,7 +60,7 @@ const zoneFormat = (ts: number, zone: string) =>
 
 const modes: Mode[] = ['now', 'later', 'repeat']
 const repeatKinds: RepeatKind[] = ['daily', 'weekdays', 'monthday', 'hours', 'custom']
-const weekdays = computed(() => weekdayNames(locale.value).map((name) => name.charAt(0).toLocaleUpperCase(locale.value) + name.slice(1)))
+const weekdays = computed(() => weekdayLabels(locale.value))
 
 const toggleChat = (id: number, on: boolean) => {
   selected.value = on ? [...selected.value, id] : selected.value.filter((x) => x !== id)

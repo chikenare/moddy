@@ -9,6 +9,7 @@ import AutoRepliesPanel from '@/components/AutoRepliesPanel.vue'
 import FiltersPanel from '@/components/FiltersPanel.vue'
 import OverviewPanel from '@/components/OverviewPanel.vue'
 import HistoryPanel from '@/components/HistoryPanel.vue'
+import NightModePanel from '@/components/NightModePanel.vue'
 import RulesPanel from '@/components/RulesPanel.vue'
 import StaffPanel from '@/components/StaffPanel.vue'
 import WhitelistPanel from '@/components/WhitelistPanel.vue'
@@ -58,6 +59,7 @@ onMounted(() => store.load())
           <TabsTrigger value="staff">{{ t('chat.tab.staff') }}</TabsTrigger>
           <TabsTrigger value="rules">{{ t('chat.tab.rules') }}</TabsTrigger>
           <TabsTrigger value="auto-replies">{{ t('chat.tab.autoReplies') }}</TabsTrigger>
+          <TabsTrigger value="night-mode">{{ t('chat.tab.nightMode') }}</TabsTrigger>
           <TabsTrigger value="history">{{ t('chat.tab.history') }}</TabsTrigger>
         </TabsList>
         <TabsContent value="overview"><OverviewPanel :chat-id="id" /></TabsContent>
@@ -67,6 +69,7 @@ onMounted(() => store.load())
         <TabsContent value="staff"><StaffPanel :id="id" /></TabsContent>
         <TabsContent value="rules"><RulesPanel :id="id" /></TabsContent>
         <TabsContent value="auto-replies"><AutoRepliesPanel :id="id" /></TabsContent>
+        <TabsContent value="night-mode"><NightModePanel :id="id" /></TabsContent>
         <TabsContent value="history"><HistoryPanel :id="id" /></TabsContent>
       </Tabs>
     </template>

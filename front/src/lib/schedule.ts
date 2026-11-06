@@ -68,6 +68,10 @@ export function weekdayNames(locale: string): string[] {
   return Array.from({ length: 7 }, (_, d) => fmt.format(new Date(Date.UTC(2023, 0, 1 + d))))
 }
 
+/** The same names starting with a capital, for buttons. */
+export const weekdayLabels = (locale: string) =>
+  weekdayNames(locale).map((name) => name.charAt(0).toLocaleUpperCase(locale) + name.slice(1))
+
 export function describeRepeat(cron: string): string {
   const f = parseCron(cron)
   const { time } = f

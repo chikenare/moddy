@@ -13,12 +13,14 @@ import { getEvent, isActiveBan, listEvents, markUnbanned } from "../db/events.js
 import { addWhitelistEntry, addWord, listWhitelist, listWords, removeWhitelistEntry, removeWord } from "../db/lists.js";
 import { cancelMessage, createMessage, getMessage, listMessages } from "../db/messages.js";
 import { type RecurringInput, createRecurring, deleteRecurring, getRecurring, listRecurring, setRecurringEnabled, updateRecurring } from "../db/recurring.js";
+import { type NightMode, type NightNotice, type NightState, getNightMode, saveNightModeSettings, setNightOverride } from "../db/night-mode.js";
 import { PERIODS, getMetrics } from "../db/stats.js";
 import { addStaff, findSeenUser, listStaff, removeStaff } from "../db/staff.js";
 import type { AppEnv } from "../env.js";
 import { normalizeWhitelistEntry } from "../moderation/links.js";
 import { nextRun, validateRecurrence } from "../messages/recurrence.js";
 import { normalizeWord } from "../moderation/normalize.js";
+import { isTime, isTimeZone, scheduledState } from "../night/schedule.js";
 import { createAuth } from "./auth.js";
 import { clearWarnings } from "../db/warnings.js";
 import { hostOriginGuard } from "./guard.js";
@@ -59,6 +61,15 @@ const patchSchema = z.object({
   warnLimit: z.number().int().min(1).max(20),
 }).partial().strict();
 
+const noticeBody = z.object({ enabled: z.boolean(), text: z.string(), entities: z.array(entityBody).max(1000) });
+const nightModeBody = z.object({
+  enabled: z.boolean(),
+  closeTime: z.string(), openTime: z.string(), timezone: z.string(),
+  days: z.array(z.number().int().min(0).max(6)).max(7),
+  closeNotice: noticeBody, openNotice: noticeBody,
+  deleteCloseNotice: z.boolean(),
+}).strict();
+
 const textBody = (key: string) => z.object({ [key]: z.string() });
 const autoReplyBody = z.object({ triggers: z.array(z.string()), reply: z.string(), entities: z.array(entityBody).max(1000).optional() });
 const messageBody = z.object({
@@ -91,6 +102,15 @@ function parseAutoReply(data: z.infer<typeof autoReplyBody>): { triggers: string
   return { triggers, reply: formatted.text, entities: formatted.entities };
 }
 
+function parseNotice(notice: z.infer<typeof noticeBody>): NightNotice | string {
+  const formatted = normalizeFormatted(notice.text, notice.entities as FormattedEntity[]);
+  if (!formatted) return "Invalid formatting";
+  if (formatted.text.length > MAX_MESSAGE) return `Notices must be at most ${MAX_MESSAGE} characters`;
+  if (formatted.entities.length > MAX_ENTITIES) return `Too much formatting: use at most ${MAX_ENTITIES} styled parts`;
+  if (notice.enabled && !formatted.text) return "Write the notice, or turn it off";
+  return { enabled: notice.enabled, ...formatted };
+}
+
 const fullName = (user: { first_name: string; last_name?: string }) => [user.first_name, user.last_name].filter(Boolean).join(" ");
 
 function describeIssue(issue: z.core.$ZodIssue): string {
@@ -102,6 +122,8 @@ function describeIssue(issue: z.core.$ZodIssue): string {
   if (field === "noticeTemplate") return "Notice must be between 1 and 500 characters";
   if (field === "rules") return "Rules must be at most 4000 characters";
   if (field === "warnLimit") return "Warnings must be between 1 and 20";
+  if (field.startsWith("days")) return "Days must be weekdays from 0 (Sunday) to 6";
+  if (field.endsWith("entities")) return "Invalid formatting";
   return field ? "Invalid value" : "Invalid body";
 }
 
@@ -119,10 +141,13 @@ const CONTENT_SECURITY_POLICY = [
 export function createApi(deps: {
   db: Db; telegram: ApiTelegram; appEnv: AppEnv;
   botUsername: () => string | null; onMessageQueued: () => void;
+  // Resolves once the worker has applied a change, so the reply already shows the group closed or open.
+  onNightModeChanged?: () => Promise<void>;
   fetchPhoto: PhotoFetcher; panelDir?: string | null; panelHost?: string | null;
   now?: () => number;
 }): Hono {
   const { db, telegram, appEnv, botUsername, onMessageQueued, fetchPhoto, panelDir } = deps;
+  const onNightModeChanged = deps.onNightModeChanged ?? (async () => {});
   const app = new Hono();
   const api = new Hono();
 
@@ -302,6 +327,48 @@ export function createApi(deps: {
     deleteChat(db, id);
     return c.body(null, 204);
   });
+
+  // What the panel needs; the saved permissions and message ids stay inside.
+  const nightView = (n: NightMode) => ({
+    enabled: n.enabled, closeTime: n.closeTime, openTime: n.openTime, timezone: n.timezone, days: n.days,
+    closeNotice: n.closeNotice, openNotice: n.openNotice, deleteCloseNotice: n.deleteCloseNotice,
+    configured: n.configured, state: n.state, override: n.override, error: n.error,
+  });
+  const noNightMode = (c: Ctx) =>
+    getChat(db, chatId(c))!.type === "channel" ? fail(c, 400, "A channel has no members writing, so it can't be closed") : null;
+
+  api.get(`${chatRoute}/night-mode`, (c) => c.json(nightView(getNightMode(db, chatId(c)))));
+
+  api.put(`${chatRoute}/night-mode`, async (c) => {
+    const refused = noNightMode(c);
+    if (refused) return refused;
+    const body = await readBody(c, nightModeBody);
+    if ("response" in body) return body.response;
+    const d = body.data;
+    if (!isTime(d.closeTime) || !isTime(d.openTime)) return fail(c, 400, "Times must be HH:MM, from 00:00 to 23:59");
+    if (d.closeTime === d.openTime) return fail(c, 400, "The closing and opening times must be different");
+    if (!isTimeZone(d.timezone)) return fail(c, 400, `Unknown time zone: ${d.timezone}`);
+    if (d.enabled && !d.days.length) return fail(c, 400, "Choose at least one night");
+    const closeNotice = parseNotice(d.closeNotice);
+    if (typeof closeNotice === "string") return fail(c, 400, closeNotice);
+    const openNotice = parseNotice(d.openNotice);
+    if (typeof openNotice === "string") return fail(c, 400, openNotice);
+    const id = chatId(c);
+    saveNightModeSettings(db, id, { ...d, closeNotice, openNotice });
+    await onNightModeChanged();
+    return c.json(nightView(getNightMode(db, id)));
+  });
+
+  for (const [path, state] of [["close", "closed"], ["open", "open"]] as [string, NightState][]) {
+    api.post(`${chatRoute}/night-mode/${path}`, async (c) => {
+      const refused = noNightMode(c);
+      if (refused) return refused;
+      const id = chatId(c);
+      setNightOverride(db, id, state, scheduledState(getNightMode(db, id), nowSeconds()));
+      await onNightModeChanged();
+      return c.json(nightView(getNightMode(db, id)));
+    });
+  }
 
   api.get(`${chatRoute}/words`, (c) => c.json({ words: listWords(db, chatId(c)) }));
   api.post(`${chatRoute}/words`, async (c) => {

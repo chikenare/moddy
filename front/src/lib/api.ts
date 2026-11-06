@@ -50,6 +50,16 @@ export interface RecurringMessage {
 }
 export interface RecurringInput { text: string; entities: FormattedEntity[]; chatIds: number[]; cron: string; timezone: string }
 
+export type NightState = "open" | "closed";
+export interface NightNotice { enabled: boolean; text: string; entities: FormattedEntity[] }
+export interface NightModeSettings {
+  enabled: boolean; closeTime: string; openTime: string; timezone: string; days: number[];
+  closeNotice: NightNotice; openNotice: NightNotice; deleteCloseNotice: boolean;
+}
+export interface NightMode extends NightModeSettings {
+  configured: boolean; state: NightState; override: NightState | null; error: string | null;
+}
+
 export type StatField =
   | "messages" | "joins" | "leaves" | "deleted" | "banned"
   | "link_hits" | "word_hits" | "flood_hits" | "bot_hits" | "auto_replies" | "broadcasts";
@@ -143,6 +153,9 @@ export const api = {
   updateAutoReply: (id: number, replyId: number, triggers: string[], message: FormattedMessage) =>
     request<AutoReply>("PUT", `${chat(id)}/auto-replies/${replyId}`, { triggers, reply: message.text, entities: message.entities }),
   removeAutoReply: (id: number, replyId: number) => request<void>("DELETE", `${chat(id)}/auto-replies/${replyId}`),
+  getNightMode: (id: number) => request<NightMode>("GET", `${chat(id)}/night-mode`),
+  saveNightMode: (id: number, settings: NightModeSettings) => request<NightMode>("PUT", `${chat(id)}/night-mode`, settings),
+  setNightNow: (id: number, action: "close" | "open") => request<NightMode>("POST", `${chat(id)}/night-mode/${action}`),
   listMessages: async () => (await request<{ messages: ScheduledMessage[] }>("GET", "/messages")).messages,
   sendMessage: (message: FormattedMessage, chatIds: number[], sendAt: number | null) =>
     request<ScheduledMessage>("POST", "/messages", { text: message.text, entities: message.entities, chatIds, sendAt }),

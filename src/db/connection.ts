@@ -135,6 +135,22 @@ export const MIGRATIONS: string[] = [
   ) STRICT;
   CREATE INDEX chat_warnings_sender ON chat_warnings(chat_id, sender_id, created_at);
   `,
+  `
+  CREATE TABLE chat_night_mode (
+    chat_id INTEGER PRIMARY KEY REFERENCES chats(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    close_time TEXT NOT NULL DEFAULT '23:00', open_time TEXT NOT NULL DEFAULT '07:00',
+    timezone TEXT NOT NULL DEFAULT 'UTC', days TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]',
+    close_notice_enabled INTEGER NOT NULL DEFAULT 1, close_text TEXT NOT NULL DEFAULT '', close_entities TEXT NOT NULL DEFAULT '[]',
+    open_notice_enabled INTEGER NOT NULL DEFAULT 1, open_text TEXT NOT NULL DEFAULT '', open_entities TEXT NOT NULL DEFAULT '[]',
+    delete_close_notice INTEGER NOT NULL DEFAULT 1,
+    state TEXT NOT NULL DEFAULT 'open',
+    override TEXT, override_schedule TEXT,
+    saved_permissions TEXT, close_message_id INTEGER,
+    error TEXT, retry_at INTEGER,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+  `,
 ];
 
 export function openDatabase(path: string): Db {

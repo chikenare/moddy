@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { api, type AutoReply, type ChatRecord, type ChatSettings, type EventRecord, type FormattedMessage, type StaffMember } from "@/lib/api";
+import { api, type AutoReply, type ChatRecord, type ChatSettings, type EventRecord, type FormattedMessage, type NightMode, type NightModeSettings, type StaffMember } from "@/lib/api";
 import { t } from "@/i18n";
 
 export function useChatDetailStore(id: number) {
@@ -12,6 +12,7 @@ export function useChatDetailStore(id: number) {
     const autoReplies = ref<AutoReply[]>([]);
     const events = ref<EventRecord[]>([]);
     const nextBefore = ref<number | null>(null);
+    const nightMode = ref<NightMode | null>(null);
     const loading = ref(false);
     const error = ref<string | null>(null);
 
@@ -19,8 +20,9 @@ export function useChatDetailStore(id: number) {
       loading.value = true;
       error.value = null;
       try {
-        const [c, w, wl, ev, st, ar] = await Promise.all([
+        const [c, w, wl, ev, st, ar, nm] = await Promise.all([
           api.getChat(id), api.listWords(id), api.listWhitelist(id), api.listEvents(id), api.listStaff(id), api.listAutoReplies(id),
+          api.getNightMode(id),
         ]);
         chat.value = c;
         words.value = w;
@@ -29,6 +31,7 @@ export function useChatDetailStore(id: number) {
         autoReplies.value = ar;
         events.value = ev.events;
         nextBefore.value = ev.nextBefore;
+        nightMode.value = nm;
       } catch (e) {
         error.value = e instanceof Error ? e.message : t("common.unknownError");
       } finally {
@@ -112,6 +115,14 @@ export function useChatDetailStore(id: number) {
       return updated;
     }
 
-    return { chat, words, whitelist, staff, autoReplies, events, nextBefore, loading, error, load, update, addWord, removeWord, addEntry, removeEntry, addStaff, removeStaff, saveAutoReply, removeAutoReply, loadMoreEvents, unban };
+    async function saveNightMode(settings: NightModeSettings) {
+      nightMode.value = await api.saveNightMode(id, settings);
+    }
+
+    async function setNightNow(action: "close" | "open") {
+      nightMode.value = await api.setNightNow(id, action);
+    }
+
+    return { nightMode, saveNightMode, setNightNow, chat, words, whitelist, staff, autoReplies, events, nextBefore, loading, error, load, update, addWord, removeWord, addEntry, removeEntry, addStaff, removeStaff, saveAutoReply, removeAutoReply, loadMoreEvents, unban };
   })();
 }

@@ -667,3 +667,51 @@ test("unbanning from the history also clears the warnings", async () => {
   expect(r.status).toBe(200);
   expect(countWarnings(db, CHAT, 10, Math.floor(Date.now() / 1000))).toBe(0);
 });
+
+const NIGHT_BODY = {
+  enabled: true, closeTime: "23:00", openTime: "07:00", timezone: "America/Mexico_City", days: [5, 6, 5],
+  closeNotice: { enabled: true, text: "  Closed  ", entities: [{ type: "bold", offset: 2, length: 6 }] },
+  openNotice: { enabled: false, text: "", entities: [] },
+  deleteCloseNotice: true,
+};
+
+test("night mode: a group that never set it up gets the defaults", async () => {
+  const r = await get(`/api/chats/${CHAT}/night-mode`);
+  expect(await r.json()).toMatchObject({ enabled: false, closeTime: "23:00", openTime: "07:00", configured: false, state: "open", override: null });
+});
+
+test("night mode: saving stores the schedule, trims the notices and waits for the worker", async () => {
+  const changed = vi.fn(async () => {});
+  app = createApi({ db, telegram: telegram as unknown as ApiTelegram, appEnv: "development", botUsername: () => null, onMessageQueued: queued, fetchPhoto, onNightModeChanged: changed });
+  const r = await put(`/api/chats/${CHAT}/night-mode`, NIGHT_BODY);
+  expect(r.status).toBe(200);
+  const body = await r.json();
+  expect(body).toMatchObject({ enabled: true, days: [5, 6], configured: true, closeNotice: { text: "Closed", entities: [{ type: "bold", offset: 0, length: 6 }] } });
+  expect(body).not.toHaveProperty("savedPermissions");
+  expect(changed).toHaveBeenCalledOnce();
+});
+
+test.each([
+  ["a bad time", { closeTime: "24:00" }, "Times must be HH:MM, from 00:00 to 23:59"],
+  ["the same time twice", { openTime: "23:00" }, "The closing and opening times must be different"],
+  ["an unknown zone", { timezone: "Mars/Olympus" }, "Unknown time zone: Mars/Olympus"],
+  ["no nights", { days: [] }, "Choose at least one night"],
+  ["a weekday out of range", { days: [7] }, "Days must be weekdays from 0 (Sunday) to 6"],
+  ["an empty notice that is on", { openNotice: { enabled: true, text: "  ", entities: [] } }, "Write the notice, or turn it off"],
+])("night mode: refuses %s", async (_name, change, error) => {
+  const r = await put(`/api/chats/${CHAT}/night-mode`, { ...NIGHT_BODY, ...change });
+  expect(r.status).toBe(400);
+  expect(await r.json()).toEqual({ error });
+});
+
+test("night mode: close and open now are held until the schedule changes", async () => {
+  const r = await post(`/api/chats/${CHAT}/night-mode/close`);
+  expect(r.status).toBe(200);
+  expect(await r.json()).toMatchObject({ override: "closed" });
+  expect(await (await post(`/api/chats/${CHAT}/night-mode/open`)).json()).toMatchObject({ override: "open" });
+});
+
+test("night mode: not for channels", async () => {
+  expect((await put(`/api/chats/${CHANNEL}/night-mode`, NIGHT_BODY)).status).toBe(400);
+  expect((await post(`/api/chats/${CHANNEL}/night-mode/close`)).status).toBe(400);
+});
