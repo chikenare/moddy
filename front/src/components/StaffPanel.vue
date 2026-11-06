@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X } from '@lucide/vue'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { useChatDetailStore } from '@/stores/chatDetail'
 
 const props = defineProps<{ id: number }>()
 const store = useChatDetailStore(props.id)
+const { t } = useI18n()
 
 const draft = ref('')
 const busy = ref(false)
@@ -22,7 +24,7 @@ async function add() {
     await store.addStaff(draft.value)
     draft.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not add the staff member'
+    error.value = e instanceof Error ? e.message : t('staff.addFailed')
   } finally {
     busy.value = false
   }
@@ -32,7 +34,7 @@ async function remove(userId: number) {
   try {
     await store.removeStaff(userId)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Could not remove the staff member')
+    toast.error(e instanceof Error ? e.message : t('staff.removeFailed'))
   }
 }
 </script>
@@ -40,21 +42,19 @@ async function remove(userId: number) {
 <template>
   <div class="space-y-4">
     <p class="text-sm text-muted-foreground">
-      Staff members are exempt from every filter in this group, without being admins.
-      If Telegram commands are on, they can also ban, warn and unban other members.
-      Add them by @username if they've written in the group since moderation was on, or by numeric user ID.
+      {{ t('staff.hint') }}
     </p>
     <form class="space-y-2" @submit.prevent="add">
       <div class="flex gap-2">
         <Input
-          v-model="draft" placeholder="@username or user ID" aria-label="Staff member"
+          v-model="draft" :placeholder="t('staff.placeholder')" :aria-label="t('staff.label')"
           :aria-invalid="error ? true : undefined" @input="error = null"
         />
-        <Button type="submit" :disabled="busy || !draft.trim()">Add</Button>
+        <Button type="submit" :disabled="busy || !draft.trim()">{{ t('common.add') }}</Button>
       </div>
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
     </form>
-    <p v-if="!store.staff.length" class="text-sm text-muted-foreground">No staff yet</p>
+    <p v-if="!store.staff.length" class="text-sm text-muted-foreground">{{ t('staff.empty') }}</p>
     <ul v-else class="flex flex-wrap gap-2">
       <li v-for="s in store.staff" :key="s.userId">
         <Badge variant="secondary" class="gap-1 py-1 pr-1 text-sm">
@@ -62,7 +62,7 @@ async function remove(userId: number) {
           <span class="text-xs text-muted-foreground">{{ s.userId }}</span>
           <button
             type="button" class="rounded-full p-0.5 hover:bg-background/60"
-            :aria-label="`Remove ${s.displayName}`" @click="remove(s.userId)"
+            :aria-label="t('common.removeItem', { name: s.displayName })" @click="remove(s.userId)"
           >
             <X class="size-3.5" />
           </button>

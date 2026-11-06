@@ -21,6 +21,7 @@ import { createModerationHandler } from "./moderation/handler.js";
 import { createRegistrationHandler } from "./moderation/registration.js";
 import { createSeenUsersHandler } from "./moderation/seen.js";
 import { createScheduler } from "./messages/scheduler.js";
+import { createNightMode } from "./night/worker.js";
 import { runShutdown } from "./shutdown.js";
 import { stripRequestDetails } from "./telegram-errors.js";
 
@@ -33,6 +34,7 @@ const flood = new FloodTracker();
 const stats = createStatsCollector({ db });
 const enforcer = createEnforcer({ api: bot.api, db, appEnv: config.appEnv, stats });
 const scheduler = createScheduler({ api: bot.api, db, stats });
+const nightMode = createNightMode({ api: bot.api, db });
 
 bot.use(createRegistrationHandler({ db }));
 bot.use(createSeenUsersHandler({ db, stats }));
@@ -76,6 +78,7 @@ const api = createApi({
   appEnv: config.appEnv,
   botUsername: () => (bot.isInited() ? bot.botInfo.username : null),
   onMessageQueued: () => scheduler.kick(),
+  onNightModeChanged: () => nightMode.tick(),
   fetchPhoto: createPhotoFetcher({ api: bot.api, token: config.botToken }),
   panelDir: config.panelDir,
   panelHost: config.panelHost,
@@ -93,6 +96,7 @@ const shutdown = async () => {
     ["server", () => new Promise<void>((resolve) => server.close(() => resolve()))],
     ["enforcer.drain", () => enforcer.drain()],
     ["scheduler", () => scheduler.stop()],
+    ["nightMode", () => nightMode.stop()],
     ["stats.stop", () => stats.stop()],
     ["db.close", () => db.close()],
   ]);
@@ -118,6 +122,7 @@ await bot.api.setMyCommands([
 
 stats.start();
 scheduler.start();
+nightMode.start();
 
 polling = bot.start({
   allowed_updates: ["message", "edited_message", "channel_post", "my_chat_member"],

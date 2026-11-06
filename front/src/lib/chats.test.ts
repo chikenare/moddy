@@ -20,6 +20,6 @@ test('the avatar hue is stable per id and within the color wheel', () => {
 
 test('activeFilters lists only enabled filters, and nothing when moderation is off', () => {
   const base = { moderationEnabled: true, linkFilterEnabled: true, wordFilterEnabled: false, floodFilterEnabled: true, botFilterEnabled: false, autoRepliesEnabled: true }
-  expect(activeFilters(base)).toEqual(['Links', 'Flood'])
+  expect(activeFilters(base)).toEqual(['link', 'flood'])
   expect(activeFilters({ ...base, moderationEnabled: false })).toEqual([])
 })

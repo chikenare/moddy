@@ -6,10 +6,11 @@ import { router } from './router'
 import 'vue-sonner/style.css'
 import './style.css'
 import { initTheme } from './lib/theme'
+import { i18n } from './i18n'
 
 initTheme()
 
-const app = createApp(App).use(createPinia()).use(router)
+const app = createApp(App).use(createPinia()).use(i18n).use(router)
 
 // A session can end at any time: expired, logged out elsewhere, or the password changed.
 // A full reload also drops everything the stores hold in memory.
