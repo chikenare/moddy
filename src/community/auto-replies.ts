@@ -4,7 +4,7 @@ import { getChat } from "../db/chats.js";
 import type { Db } from "../db/connection.js";
 import type { StatsSink } from "../metrics/collector.js";
 import { findBannedWord, maskEntities } from "../moderation/words.js";
-import { COOLDOWN_MS, Cooldown, replyInBackground } from "./reply.js";
+import { COOLDOWN_MS, Cooldown, mentionSender, replyInBackground } from "./reply.js";
 
 export function createAutoRepliesHandler(deps: { db: Db; now?: () => number; stats?: StatsSink }): Composer<Context> {
   const { db, stats } = deps;
@@ -21,7 +21,10 @@ export function createAutoRepliesHandler(deps: { db: Db; now?: () => number; sta
       : message.caption !== undefined ? maskEntities(message.caption, message.caption_entities) : null;
     if (scanned !== null) {
       const match = listAutoReplies(db, chat.id).find((r) => findBannedWord(scanned, r.triggers) !== undefined);
-      if (match && cooldown.take(`${chat.id}:${match.id}`)) replyInBackground(ctx, match.reply, match.entities, () => stats?.add(chat.id, "auto_replies"));
+      if (match && cooldown.take(`${chat.id}:${match.id}`)) {
+        const reply = mentionSender(ctx, match.reply, match.entities);
+        replyInBackground(ctx, reply.text, reply.entities, () => stats?.add(chat.id, "auto_replies"));
+      }
     }
     return next();
   });
