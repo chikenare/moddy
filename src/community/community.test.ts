@@ -120,7 +120,8 @@ test("a trigger answers as a reply, ignoring case and accents, and continues to 
   const update = groupMessage({ text: "quiero INFORMACIÓN ya" });
   await run(update);
   expect(sent()[0]).toMatchObject({
-    chat_id: CHAT, text: "Get premium: https://x.example",
+    chat_id: CHAT, text: "Ana\nGet premium: https://x.example",
+    entities: [{ type: "text_mention", offset: 0, length: 3, user: { id: 10 } }],
     reply_parameters: { message_id: update.message!.message_id, allow_sending_without_reply: true },
     link_preview_options: { is_disabled: true },
   });
@@ -143,14 +144,25 @@ test("a styled reply is sent with its Telegram entities", async () => {
   const entities = [{ type: "bold" as const, offset: 0, length: 3 }, { type: "text_link" as const, offset: 4, length: 2, url: "https://x.example" }];
   insertAutoReply(db, CHAT, ["premium"], "Get it", entities);
   await run(groupMessage({ text: "premium" }));
-  expect(sent()[0]).toMatchObject({ text: "Get it", entities });
+  expect(sent()[0]).toMatchObject({
+    text: "Ana\nGet it",
+    entities: [
+      { type: "text_mention", offset: 0, length: 3, user: { id: 10 } },
+      { type: "bold", offset: 4, length: 3 },
+      { type: "text_link", offset: 8, length: 2, url: "https://x.example" },
+    ],
+  });
   expect(sent()[0].parse_mode).toBeUndefined();
 });
 
-test("a plain reply sends no entities field", async () => {
+test.each([
+  ["an anonymous admin", { from: { id: 1087968824, is_bot: true, first_name: "Group" }, sender_chat: { id: CHAT, type: "supergroup" as const, title: "Grupo" } }],
+  ["a channel posting in the group", { from: { id: 136817688, is_bot: true, first_name: "Channel" }, sender_chat: { id: -1002, type: "channel" as const, title: "Canal" } }],
+])("a reply to %s mentions nobody", async (_name, sender) => {
   updateChatSettings(db, CHAT, { autoRepliesEnabled: true });
   insertAutoReply(db, CHAT, ["premium"], "Info");
-  await run(groupMessage({ text: "premium" }));
+  await run(groupMessage({ text: "premium", ...sender }));
+  expect(sent()[0]).toMatchObject({ text: "Info" });
   expect(sent()[0]).not.toHaveProperty("entities");
 });
 
@@ -166,10 +178,10 @@ test("each reply goes out at most once a minute per chat; other replies are not 
   insertAutoReply(db, CHAT, ["premium"], "Info");
   insertAutoReply(db, CHAT, ["help"], "Ask");
   await run(groupMessage({ text: "premium" }), groupMessage({ text: "premium" }), groupMessage({ text: "help" }));
-  expect(sent().map((m) => m.text)).toEqual(["Info", "Ask"]);
+  expect(sent().map((m) => m.text)).toEqual(["Ana\nInfo", "Ana\nAsk"]);
   clock += 60_000;
   await run(groupMessage({ text: "premium" }));
-  expect(sent().map((m) => m.text)).toEqual(["Info", "Ask", "Info"]);
+  expect(sent().map((m) => m.text)).toEqual(["Ana\nInfo", "Ana\nAsk", "Ana\nInfo"]);
 });
 
 test("one message answers once even if it matches several replies", async () => {
@@ -177,7 +189,7 @@ test("one message answers once even if it matches several replies", async () => 
   insertAutoReply(db, CHAT, ["premium"], "Info");
   insertAutoReply(db, CHAT, ["help"], "Ask");
   await run(groupMessage({ text: "premium help" }));
-  expect(sent().map((m) => m.text)).toEqual(["Info"]);
+  expect(sent().map((m) => m.text)).toEqual(["Ana\nInfo"]);
 });
 
 test("edited messages and channel auto-forwards do not answer", async () => {
